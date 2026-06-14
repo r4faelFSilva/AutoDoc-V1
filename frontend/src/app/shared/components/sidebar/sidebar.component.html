@@ -1,0 +1,85 @@
+<aside class="sidebar" [class.collapsed]="collapsed()">
+  <div class="sidebar-header">
+    <div class="logo" *ngIf="!collapsed()">
+      <span class="logo-text">AutoDoc</span>
+    </div>
+    <button class="toggle-btn" (click)="toggleCollapsed()" [matTooltip]="collapsed() ? 'Expandir' : 'Recolher'" matTooltipPosition="right">
+      <span class="material-symbols-outlined">{{ collapsed() ? 'chevron_right' : 'chevron_left' }}</span>
+    </button>
+  </div>
+
+  <!-- Search bar (only when expanded) -->
+  <div class="search-wrapper" *ngIf="!collapsed()">
+    <div class="search-bar">
+      <span class="material-symbols-outlined search-icon">search</span>
+      <input
+        class="search-input"
+        type="text"
+        placeholder="Pesquisar documentações…"
+        [value]="searchQuery()"
+        (input)="onSearchInput($any($event.target).value)"
+        (keydown)="onSearchKeydown($event)"
+        (focus)="showDropdown.set(suggestions().length > 0)"
+        autocomplete="off"
+      />
+      <button *ngIf="searchQuery()" class="search-clear" (click)="clearSearch()" tabindex="-1">
+        <span class="material-symbols-outlined">close</span>
+      </button>
+    </div>
+
+    <!-- Autocomplete dropdown -->
+    <div class="search-dropdown" *ngIf="showDropdown() && (suggestions().length > 0 || searching())">
+      <div *ngIf="searching()" class="dropdown-loading">
+        <div class="loading-dots"><span></span><span></span><span></span></div>
+      </div>
+
+      <ng-container *ngIf="!searching()">
+        <button
+          *ngFor="let item of suggestions()"
+          class="suggestion-item"
+          (click)="selectSuggestion(item)"
+          type="button"
+        >
+          <div class="suggestion-filename">
+            <span class="material-symbols-outlined suggestion-file-icon">insert_drive_file</span>
+            {{ item.filename }}
+          </div>
+          <div class="suggestion-snippet" [innerHTML]="item.snippet | highlight: searchQuery()"></div>
+        </button>
+
+        <button class="see-all-btn" (click)="navigateToSearch()" type="button">
+          <span class="material-symbols-outlined">open_in_new</span>
+          Ver todos os resultados
+        </button>
+      </ng-container>
+    </div>
+  </div>
+
+  <!-- Search icon when collapsed -->
+  <div class="collapsed-search" *ngIf="collapsed()">
+    <button class="nav-item" (click)="navigateToSearch()" matTooltip="Pesquisar" matTooltipPosition="right">
+      <span class="material-symbols-outlined nav-icon">search</span>
+    </button>
+  </div>
+
+  <nav class="nav">
+    <a
+      *ngFor="let item of navItems"
+      [routerLink]="item.path"
+      routerLinkActive="active"
+      class="nav-item"
+      [matTooltip]="collapsed() ? item.label : ''"
+      matTooltipPosition="right"
+    >
+      <span class="material-symbols-outlined nav-icon">{{ item.icon }}</span>
+      <span class="nav-label" *ngIf="!collapsed()">{{ item.label }}</span>
+    </a>
+  </nav>
+
+  <div class="sidebar-footer">
+    <button class="nav-item logout-btn" (click)="logout()" [matTooltip]="collapsed() ? 'Sair' : ''" matTooltipPosition="right">
+      <span class="material-symbols-outlined nav-icon">logout</span>
+      <span class="nav-label" *ngIf="!collapsed()">Sair</span>
+    </button>
+  </div>
+</aside>

@@ -1,0 +1,138 @@
+<div class="page">
+  <div class="page-nav">
+    <a routerLink="/history" class="back-link">
+      <span class="material-symbols-outlined">arrow_back</span>
+      Voltar ao Histórico
+    </a>
+  </div>
+
+  <ng-container *ngIf="loading()">
+    <div class="viewer-skeleton">
+      <app-skeleton width="300px" height="28px"></app-skeleton>
+      <div class="meta-skeleton">
+        <app-skeleton width="120px" height="14px"></app-skeleton>
+        <app-skeleton width="100px" height="14px"></app-skeleton>
+        <app-skeleton width="80px" height="14px"></app-skeleton>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:12px;margin-top:32px">
+        <app-skeleton width="60%" height="20px"></app-skeleton>
+        <app-skeleton width="100%" height="14px"></app-skeleton>
+        <app-skeleton width="88%" height="14px"></app-skeleton>
+        <app-skeleton width="95%" height="14px"></app-skeleton>
+        <app-skeleton width="40%" height="18px" style="margin-top:12px"></app-skeleton>
+        <app-skeleton width="100%" height="80px"></app-skeleton>
+        <app-skeleton width="100%" height="80px"></app-skeleton>
+      </div>
+    </div>
+  </ng-container>
+
+  <ng-container *ngIf="notFound()">
+    <div class="not-found">
+      <span class="material-symbols-outlined">search_off</span>
+      <h2>Documentação não encontrada</h2>
+      <a routerLink="/history" class="btn-primary">Voltar ao Histórico</a>
+    </div>
+  </ng-container>
+
+  <ng-container *ngIf="!loading() && doc()">
+    <div class="viewer-header">
+      <div class="viewer-title-row">
+        <div class="file-chip">
+          <span class="material-symbols-outlined">insert_drive_file</span>
+          {{ doc()!.filename }}
+        </div>
+        <div class="viewer-actions">
+          <div class="editor-tabs">
+            <button type="button" class="editor-tab" [class.active]="!editMode()" (click)="editMode.set(false)" title="Pré-visualização">
+              <span class="material-symbols-outlined">preview</span>
+              Prévia
+            </button>
+            <button type="button" class="editor-tab" [class.active]="editMode()" (click)="editMode.set(true)" title="Editar markdown">
+              <span class="material-symbols-outlined">edit_note</span>
+              Editar
+            </button>
+          </div>
+          <div class="actions-divider"></div>
+          <button type="button" class="btn-copy" (click)="copyMarkdown()" title="Copiar markdown">
+            <span class="material-symbols-outlined">content_copy</span>
+            Copiar
+          </button>
+          <button type="button" class="btn-download" (click)="downloadMd()">
+            <span class="material-symbols-outlined">download</span>
+            Baixar .md
+          </button>
+          <button type="button" class="btn-pdf" (click)="exportPdf()">
+            <span class="material-symbols-outlined">picture_as_pdf</span>
+            Exportar PDF
+          </button>
+        </div>
+      </div>
+
+      <div class="meta-row">
+        <div class="meta-item">
+          <span class="material-symbols-outlined meta-icon">schedule</span>
+          {{ formatDate(doc()!.created_at) }}
+        </div>
+        <div class="meta-item">
+          <span class="material-symbols-outlined meta-icon">description</span>
+          {{ doc()!.template_name }}
+        </div>
+        <div class="meta-item">
+          <span class="badge" [class.badge-technical]="doc()!.output_type === 'technical'" [class.badge-functional]="doc()!.output_type === 'functional'">
+            {{ doc()!.output_type === 'technical' ? 'Técnica' : 'Funcional' }}
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Barra de ações do editor (aparece somente ao editar) -->
+    <div class="editor-bar" *ngIf="editMode()">
+      <span class="editor-bar-hint">
+        <span class="material-symbols-outlined">info</span>
+        Editando markdown — as alterações não são salvas automaticamente
+      </span>
+      <div class="editor-bar-actions">
+        <button class="btn-discard" (click)="discardChanges()" [disabled]="saving()">
+          Descartar
+        </button>
+        <button class="btn-save" (click)="saveChanges()" [disabled]="!isModified() || saving()">
+          <span *ngIf="!saving()">
+            <span class="material-symbols-outlined">save</span>
+            Salvar alterações
+          </span>
+          <span *ngIf="saving()" class="loading-dots">
+            <span></span><span></span><span></span>
+          </span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Highlight banner -->
+    <div class="highlight-banner" *ngIf="highlightQuery() && !editMode()">
+      <span class="material-symbols-outlined">highlight</span>
+      <span>
+        <strong>{{ highlightCount() }}</strong>
+        ocorrência{{ highlightCount() !== 1 ? 's' : '' }} de
+        "<strong>{{ highlightQuery() }}</strong>"
+      </span>
+      <button class="highlight-clear-btn" (click)="clearHighlights()" type="button">
+        <span class="material-symbols-outlined">close</span>
+        Limpar destaque
+      </button>
+    </div>
+
+    <div class="markdown-wrapper">
+      <textarea
+        *ngIf="editMode()"
+        class="md-editor"
+        [value]="editedContent()"
+        (input)="editedContent.set($any($event.target).value)"
+        spellcheck="false"
+        autocomplete="off"
+      ></textarea>
+      <div *ngIf="!editMode()" class="markdown-body" #markdownContent>
+        <markdown [data]="editedContent()" (ready)="onMarkdownReady()"></markdown>
+      </div>
+    </div>
+  </ng-container>
+</div>

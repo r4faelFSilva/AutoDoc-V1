@@ -1,0 +1,68 @@
+<div class="page">
+  <div class="page-header">
+    <h1 class="page-title">Pesquisa</h1>
+    <p class="page-sub">Busque por conteúdo, nome de arquivo ou template</p>
+  </div>
+
+  <div class="search-bar-wrapper">
+    <span class="material-symbols-outlined search-icon">search</span>
+    <input
+      class="search-input"
+      type="text"
+      placeholder="Digite para pesquisar…"
+      [value]="query()"
+      (input)="onInput($any($event.target).value)"
+      autocomplete="off"
+      autofocus
+    />
+    <div *ngIf="loading()" class="loading-dots">
+      <span></span><span></span><span></span>
+    </div>
+  </div>
+
+  <!-- Empty state / hint -->
+  <div class="empty-state" *ngIf="!loading() && !searched()">
+    <span class="material-symbols-outlined empty-icon">manage_search</span>
+    <p>Digite ao menos 2 caracteres para iniciar a pesquisa</p>
+  </div>
+
+  <!-- No results -->
+  <div class="empty-state" *ngIf="!loading() && searched() && results().length === 0">
+    <span class="material-symbols-outlined empty-icon">search_off</span>
+    <p>Nenhuma documentação encontrada para <strong>"{{ query() }}"</strong></p>
+    <a routerLink="/generate" class="btn-primary">Gerar nova documentação</a>
+  </div>
+
+  <!-- Results -->
+  <div class="results-list" *ngIf="!loading() && results().length > 0">
+    <div class="results-count">{{ results().length }} resultado{{ results().length !== 1 ? 's' : '' }} para "{{ query() }}"</div>
+
+    <a
+      *ngFor="let item of results()"
+      class="result-card"
+      [routerLink]="['/history', item.id]"
+      [queryParams]="{ highlight: query() }"
+    >
+      <div class="result-top">
+        <div class="result-filename">
+          <span class="material-symbols-outlined file-icon">insert_drive_file</span>
+          {{ item.filename }}
+        </div>
+        <div class="result-meta">
+          <span class="badge" [class.badge-technical]="item.output_type === 'technical'" [class.badge-functional]="item.output_type === 'functional'">
+            {{ item.output_type === 'technical' ? 'Técnica' : 'Funcional' }}
+          </span>
+          <span class="meta-date">
+            <span class="material-symbols-outlined" style="font-size:13px">schedule</span>
+            {{ formatDate(item.created_at) }}
+          </span>
+        </div>
+      </div>
+      <div class="result-template">
+        <span class="material-symbols-outlined" style="font-size:13px">description</span>
+        {{ item.template_name }}
+      </div>
+      <div class="result-snippet" [innerHTML]="item.snippet | highlight: query()"></div>
+    </a>
+  </div>
+</div>

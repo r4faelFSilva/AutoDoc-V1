@@ -1,0 +1,82 @@
+<div class="page">
+  <div class="page-header">
+    <div>
+      <h1 class="page-title">Dashboard</h1>
+      <p class="page-subtitle">Visão geral da sua atividade no AutoDoc</p>
+    </div>
+    <a routerLink="/generate" class="btn-primary">
+      <span class="material-symbols-outlined">auto_awesome</span>
+      Nova Documentação
+    </a>
+  </div>
+
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="stat-icon-wrap accent-purple">
+        <span class="material-symbols-outlined">article</span>
+      </div>
+      <div class="stat-body">
+        <ng-container *ngIf="!loading(); else skeletonStat">
+          <span class="stat-value">{{ stats()?.total_docs ?? 0 }}</span>
+        </ng-container>
+        <ng-template #skeletonStat>
+          <app-skeleton width="48px" height="32px"></app-skeleton>
+        </ng-template>
+        <span class="stat-label">Documentações geradas</span>
+      </div>
+    </div>
+
+    <div class="stat-card">
+      <div class="stat-icon-wrap accent-green">
+        <span class="material-symbols-outlined">description</span>
+      </div>
+      <div class="stat-body">
+        <ng-container *ngIf="!loading(); else skeletonStat2">
+          <span class="stat-value">{{ stats()?.available_templates ?? 0 }}</span>
+        </ng-container>
+        <ng-template #skeletonStat2>
+          <app-skeleton width="48px" height="32px"></app-skeleton>
+        </ng-template>
+        <span class="stat-label">Templates disponíveis</span>
+      </div>
+    </div>
+
+    <div class="stat-card last-doc-card">
+      <div class="stat-icon-wrap accent-blue">
+        <span class="material-symbols-outlined">schedule</span>
+      </div>
+      <div class="stat-body">
+        <ng-container *ngIf="!loading() && stats()?.last_doc; else noLastDoc">
+          <span class="stat-value truncate">{{ stats()!.last_doc!.filename }}</span>
+          <span class="stat-label">{{ formatDate(stats()!.last_doc!.created_at) }}</span>
+        </ng-container>
+        <ng-template #noLastDoc>
+          <ng-container *ngIf="loading(); else emptyLastDoc">
+            <app-skeleton width="120px" height="24px"></app-skeleton>
+            <app-skeleton width="80px" height="14px"></app-skeleton>
+          </ng-container>
+          <ng-template #emptyLastDoc>
+            <span class="stat-value muted">—</span>
+            <span class="stat-label">Nenhuma ainda</span>
+          </ng-template>
+        </ng-template>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2 class="section-title">Ações rápidas</h2>
+    <div class="actions-grid">
+      <a
+        *ngFor="let action of quickActions"
+        [routerLink]="action.path"
+        class="action-card"
+        [class.accent]="action.accent"
+      >
+        <span class="material-symbols-outlined action-icon">{{ action.icon }}</span>
+        <span class="action-label">{{ action.label }}</span>
+        <span class="material-symbols-outlined action-arrow">arrow_forward</span>
+      </a>
+    </div>
+  </div>
+</div>

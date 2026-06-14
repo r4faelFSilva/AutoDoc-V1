@@ -1,0 +1,89 @@
+<app-particle-background />
+<div class="register-page">
+  <div class="register-card">
+    <div class="register-header">
+      <div class="brand">
+        <span class="brand-name">AutoDoc</span>
+      </div>
+      <h1>Criar conta</h1>
+      <p class="subtitle">Comece a gerar documentação com IA</p>
+    </div>
+
+    <form [formGroup]="form" (ngSubmit)="submit()" class="register-form" autocomplete="off">
+      <div class="field-group">
+        <span class="field-label">Email</span>
+        <div class="input-wrapper">
+          <span class="material-symbols-outlined input-icon" aria-hidden="true">mail</span>
+          <input
+            type="email"
+            formControlName="email"
+            class="field-input"
+            placeholder="seu@email.com"
+            autocomplete="username"
+          />
+        </div>
+        <span class="field-error" *ngIf="form.get('email')?.touched && form.get('email')?.errors?.['required']">
+          Email é obrigatório
+        </span>
+        <span class="field-error" *ngIf="form.get('email')?.touched && form.get('email')?.errors?.['email']">
+          Email inválido
+        </span>
+      </div>
+
+      <div class="field-group">
+        <span class="field-label">Senha</span>
+        <div class="input-wrapper">
+          <span class="material-symbols-outlined input-icon" aria-hidden="true">lock</span>
+          <input
+            [type]="showPassword() ? 'text' : 'password'"
+            formControlName="password"
+            class="field-input"
+            placeholder="Mínimo 6 caracteres"
+            autocomplete="new-password"
+          />
+          <button type="button" class="toggle-password" (click)="showPassword.update(v => !v)">
+            <span class="material-symbols-outlined">{{ showPassword() ? 'visibility_off' : 'visibility' }}</span>
+          </button>
+        </div>
+        <span class="field-error" *ngIf="form.get('password')?.touched && form.get('password')?.errors?.['required']">
+          Senha é obrigatória
+        </span>
+        <span class="field-error" *ngIf="form.get('password')?.touched && form.get('password')?.errors?.['minlength']">
+          Senha deve ter no mínimo 6 caracteres
+        </span>
+      </div>
+
+      <div class="field-group">
+        <span class="field-label">Confirmar senha</span>
+        <div class="input-wrapper">
+          <span class="material-symbols-outlined input-icon" aria-hidden="true">lock_reset</span>
+          <input
+            [type]="showConfirm() ? 'text' : 'password'"
+            formControlName="confirmPassword"
+            class="field-input"
+            placeholder="Repita a senha"
+            autocomplete="off"
+          />
+          <button type="button" class="toggle-password" (click)="showConfirm.update(v => !v)">
+            <span class="material-symbols-outlined">{{ showConfirm() ? 'visibility_off' : 'visibility' }}</span>
+          </button>
+        </div>
+        <span class="field-error" *ngIf="form.get('confirmPassword')?.touched && form.errors?.['passwordMismatch']">
+          As senhas não coincidem
+        </span>
+      </div>
+
+      <button type="submit" class="btn-primary" [disabled]="form.invalid || loading()">
+        <span *ngIf="!loading()">Criar conta</span>
+        <span *ngIf="loading()" class="loading-dots">
+          <span></span><span></span><span></span>
+        </span>
+      </button>
+
+      <p class="login-link">
+        Já tem uma conta?
+        <a routerLink="/login">Entrar</a>
+      </p>
+    </form>
+  </div>
+</div>

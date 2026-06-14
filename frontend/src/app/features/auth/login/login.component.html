@@ -1,0 +1,72 @@
+<app-particle-background />
+<div class="login-page">
+  <div class="login-card">
+    <div class="login-header">
+      <div class="brand">
+        <!-- <span class="brand-icon">⚡</span> -->
+        <span class="brand-name">AutoDoc</span>
+      </div>
+      <h1>Bem-vindo</h1>
+      <p class="subtitle">Entre para gerar documentação com IA</p>
+    </div>
+
+    <form [formGroup]="form" (ngSubmit)="submit()" class="login-form">
+      <div class="field-group">
+        <span class="field-label">Email</span>
+        <div class="input-wrapper">
+          <span class="material-symbols-outlined input-icon">mail</span>
+          <input
+            type="email"
+            formControlName="email"
+            class="field-input"
+            placeholder="seu@email.com"
+            autocomplete="email"
+          />
+        </div>
+        <span class="field-error" *ngIf="form.get('email')?.touched && form.get('email')?.errors?.['required']">
+          Email é obrigatório
+        </span>
+        <span class="field-error" *ngIf="form.get('email')?.touched && form.get('email')?.errors?.['email']">
+          Email inválido
+        </span>
+      </div>
+
+      <div class="field-group">
+        <span class="field-label">Senha</span>
+        <div class="input-wrapper">
+          <span class="material-symbols-outlined input-icon">lock</span>
+          <input
+            [type]="showPassword() ? 'text' : 'password'"
+            formControlName="password"
+            class="field-input"
+            placeholder="••••••••"
+            autocomplete="current-password"
+          />
+          <button type="button" class="toggle-password" (click)="showPassword.update(v => !v)">
+            <span class="material-symbols-outlined">{{ showPassword() ? 'visibility_off' : 'visibility' }}</span>
+          </button>
+        </div>
+        <span class="field-error" *ngIf="form.get('password')?.touched && form.get('password')?.errors?.['required']">
+          Senha é obrigatória
+        </span>
+      </div>
+
+      <button type="submit" class="btn-primary" [disabled]="form.invalid || loading()">
+        <span *ngIf="!loading()">Entrar</span>
+        <span *ngIf="loading()" class="loading-dots">
+          <span></span><span></span><span></span>
+        </span>
+      </button>
+
+      <p class="demo-hint">
+        <span class="material-symbols-outlined hint-icon">info</span>
+        Demo: demo&#64;autodoc.dev / demo
+      </p>
+
+      <p class="register-link">
+        Não tem uma conta?
+        <a routerLink="/register">Cadastre-se</a>
+      </p>
+    </form>
+  </div>
+</div>

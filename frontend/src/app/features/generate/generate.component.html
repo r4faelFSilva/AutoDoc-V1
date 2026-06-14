@@ -1,0 +1,182 @@
+<div class="page">
+  <div class="page-header">
+    <div>
+      <h1 class="page-title">Gerar Documentação</h1>
+      <p class="page-subtitle">Cole ou faça upload do código e deixe a IA documentar</p>
+    </div>
+  </div>
+
+  <div class="generate-layout">
+    <div class="form-panel">
+      <form [formGroup]="form" (ngSubmit)="generate()">
+
+        <div class="form-section">
+          <div class="mode-tabs">
+            <button type="button" class="mode-tab" [class.active]="inputMode() === 'paste'" (click)="setInputMode('paste')">
+              <span class="material-symbols-outlined">content_paste</span>
+              Colar código
+            </button>
+            <button type="button" class="mode-tab" [class.active]="inputMode() === 'upload'" (click)="setInputMode('upload')">
+              <span class="material-symbols-outlined">upload_file</span>
+              Upload de arquivo
+            </button>
+            <button type="button" class="mode-tab" [class.active]="inputMode() === 'github'" (click)="setInputMode('github')">
+              <span class="material-symbols-outlined">link</span>
+              Link GitHub
+            </button>
+          </div>
+
+          <ng-container *ngIf="inputMode() === 'paste'">
+            <textarea
+              formControlName="code"
+              class="code-textarea"
+              placeholder="// Cole seu código aqui..."
+              spellcheck="false"
+            ></textarea>
+          </ng-container>
+
+          <ng-container *ngIf="inputMode() === 'upload'">
+            <label class="upload-area" [class.has-file]="uploadedFilename()">
+              <input type="file" (change)="onFileChange($event)" accept=".py,.js,.ts,.java,.go,.cs,.php,.rb,.cpp,.c,.rs,.kt,.swift" style="display:none" />
+              <ng-container *ngIf="!uploadedFilename(); else fileSelected">
+                <span class="material-symbols-outlined upload-icon">cloud_upload</span>
+                <span class="upload-label">Arraste ou clique para selecionar</span>
+                <span class="upload-hint">.py, .js, .ts, .java, .go e outros</span>
+              </ng-container>
+              <ng-template #fileSelected>
+                <span class="material-symbols-outlined upload-icon success">check_circle</span>
+                <span class="upload-label">{{ uploadedFilename() }}</span>
+                <span class="upload-hint">Clique para trocar o arquivo</span>
+              </ng-template>
+            </label>
+          </ng-container>
+
+          <ng-container *ngIf="inputMode() === 'github'">
+            <label class="field-label">URL do repositório</label>
+            <input
+              type="url"
+              formControlName="github_url"
+              class="code-textarea github-url-input"
+              placeholder="https://github.com/dono/repositorio"
+              spellcheck="false"
+            />
+            <p *ngIf="form.get('github_url')?.invalid && form.get('github_url')?.touched" class="field-hint error">
+              Informe um link válido do GitHub (https://github.com/…).
+            </p>
+            <label class="field-label github-branch-label">Branch (opcional)</label>
+            <input
+              type="text"
+              formControlName="branch"
+              class="code-textarea github-branch-input"
+              placeholder="main — deixe vazio para usar o branch padrão do repositório"
+              spellcheck="false"
+            />
+          </ng-container>
+        </div>
+
+        <div class="form-row">
+          <div class="field-group">
+            <label class="field-label">Template</label>
+            <div class="select-wrapper">
+              <select formControlName="template_id" class="field-select">
+                <option *ngFor="let t of templates()" [value]="t.id">{{ t.name }}</option>
+              </select>
+              <span class="material-symbols-outlined select-arrow">expand_more</span>
+            </div>
+          </div>
+
+          <div class="field-group">
+            <label class="field-label">Tipo de saída</label>
+            <div class="output-types">
+              <label
+                *ngFor="let type of outputTypes"
+                class="output-type"
+                [class.selected]="form.get('output_type')?.value === type.value"
+              >
+                <input type="radio" formControlName="output_type" [value]="type.value" style="display:none" />
+                <span class="material-symbols-outlined">{{ type.icon }}</span>
+                {{ type.label }}
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <button type="submit" class="btn-generate" [disabled]="(inputMode() !== 'github' && form.invalid) || (inputMode() === 'github' && (form.get('github_url')?.invalid || !form.get('template_id')?.value)) || loading()">
+          <ng-container *ngIf="!loading()">
+            <span class="material-symbols-outlined">auto_awesome</span>
+            Gerar Documentação
+          </ng-container>
+          <ng-container *ngIf="loading()">
+            <span class="spinner"></span>
+            Processando com IA...
+          </ng-container>
+        </button>
+      </form>
+    </div>
+
+    <div class="result-panel" *ngIf="result() || loading()">
+      <div class="result-header">
+        <h2 class="result-title">
+          <span class="material-symbols-outlined">description</span>
+          Documentação Gerada
+        </h2>
+        <div *ngIf="result()" class="result-actions">
+          <div class="editor-tabs">
+            <button type="button" class="editor-tab" [class.active]="!editMode()" (click)="editMode.set(false)" title="Pré-visualização">
+              <span class="material-symbols-outlined">preview</span>
+              Prévia
+            </button>
+            <button type="button" class="editor-tab" [class.active]="editMode()" (click)="editMode.set(true)" title="Editar markdown">
+              <span class="material-symbols-outlined">edit_note</span>
+              Editar
+            </button>
+          </div>
+          <div class="actions-divider"></div>
+          <button type="button" class="btn-copy" (click)="copyMarkdown()" title="Copiar markdown">
+            <span class="material-symbols-outlined">content_copy</span>
+            Copiar
+          </button>
+          <button type="button" class="btn-download" (click)="downloadMd()">
+            <span class="material-symbols-outlined">download</span>
+            Baixar .md
+          </button>
+          <button type="button" class="btn-pdf" (click)="exportPdf()">
+            <span class="material-symbols-outlined">picture_as_pdf</span>
+            PDF
+          </button>
+        </div>
+      </div>
+
+      <ng-container *ngIf="loading()">
+        <div class="result-skeleton">
+          <div class="processing-badge">
+            <span class="spinner-sm"></span>
+            A IA está analisando seu código...
+          </div>
+          <div style="display:flex;flex-direction:column;gap:10px;margin-top:24px;">
+            <app-skeleton width="60%" height="22px"></app-skeleton>
+            <app-skeleton width="100%" height="14px"></app-skeleton>
+            <app-skeleton width="90%" height="14px"></app-skeleton>
+            <app-skeleton width="75%" height="14px"></app-skeleton>
+            <app-skeleton width="40%" height="18px" style="margin-top:8px"></app-skeleton>
+            <app-skeleton width="100%" height="60px"></app-skeleton>
+          </div>
+        </div>
+      </ng-container>
+
+      <ng-container *ngIf="result() && !loading()">
+        <textarea
+          *ngIf="editMode()"
+          class="md-editor"
+          [value]="editedContent()"
+          (input)="editedContent.set($any($event.target).value)"
+          spellcheck="false"
+          autocomplete="off"
+        ></textarea>
+        <div *ngIf="!editMode()" class="markdown-body" #markdownResult>
+          <markdown [data]="editedContent()"></markdown>
+        </div>
+      </ng-container>
+    </div>
+  </div>
+</div>

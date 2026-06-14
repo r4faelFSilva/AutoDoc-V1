@@ -1,0 +1,165 @@
+<div class="page">
+  <div class="page-header">
+    <div>
+      <h1 class="page-title">Templates</h1>
+      <p class="page-subtitle">Gerencie os prompts usados para documentar código</p>
+    </div>
+    <button class="btn-primary" (click)="openNew()">
+      <span class="material-symbols-outlined">add</span>
+      Novo Template
+    </button>
+  </div>
+
+  <div class="table-wrapper">
+    <ng-container *ngIf="loading()">
+      <div class="skeleton-rows">
+        <div class="skeleton-row" *ngFor="let i of [1,2,3]">
+          <app-skeleton width="200px" height="16px"></app-skeleton>
+          <app-skeleton width="140px" height="16px"></app-skeleton>
+          <app-skeleton width="70px" height="22px"></app-skeleton>
+          <app-skeleton width="80px" height="16px"></app-skeleton>
+        </div>
+      </div>
+    </ng-container>
+
+    <ng-container *ngIf="!loading()">
+      <table class="data-table" *ngIf="templates().length > 0; else emptyState">
+        <thead>
+          <tr>
+            <th>Nome</th>
+            <th>Descrição</th>
+            <th>Tipo</th>
+            <th>Criado em</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let t of templates()">
+            <td class="col-name">
+              <span class="template-name">{{ t.name }}</span>
+            </td>
+            <td class="col-desc">
+              <span class="truncate-text">{{ t.description }}</span>
+            </td>
+            <td>
+              <span class="badge" [class.badge-technical]="t.type === 'technical'" [class.badge-functional]="t.type === 'functional'">
+                {{ typeBadge(t.type) }}
+              </span>
+            </td>
+            <td class="col-date">{{ formatDate(t.created_at) }}</td>
+            <td class="col-actions">
+              <ng-container *ngIf="deleteConfirm() !== t.id; else confirmRow">
+                <button class="action-btn" (click)="openEdit(t)" title="Editar">
+                  <span class="material-symbols-outlined">edit</span>
+                </button>
+                <button class="action-btn danger" (click)="confirmDelete(t.id)" title="Excluir">
+                  <span class="material-symbols-outlined">delete</span>
+                </button>
+              </ng-container>
+              <ng-template #confirmRow>
+                <span class="confirm-text">Confirmar?</span>
+                <button class="action-btn danger" (click)="deleteTemplate(t.id)">
+                  <span class="material-symbols-outlined">check</span>
+                </button>
+                <button class="action-btn" (click)="cancelDelete()">
+                  <span class="material-symbols-outlined">close</span>
+                </button>
+              </ng-template>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <ng-template #emptyState>
+        <div class="empty-state">
+          <span class="material-symbols-outlined empty-icon">description</span>
+          <p>Nenhum template cadastrado.</p>
+          <button class="btn-primary" (click)="openNew()">Criar primeiro template</button>
+        </div>
+      </ng-template>
+    </ng-container>
+  </div>
+</div>
+
+<!-- Drawer -->
+<div class="drawer-backdrop" [class.open]="drawerOpen()" (click)="closeDrawer()"></div>
+<div class="drawer" [class.open]="drawerOpen()">
+  <div class="drawer-header">
+    <h2 class="drawer-title">{{ editingTemplate() ? 'Editar Template' : 'Novo Template' }}</h2>
+    <button class="close-btn" (click)="closeDrawer()">
+      <span class="material-symbols-outlined">close</span>
+    </button>
+  </div>
+
+  <form [formGroup]="form" (ngSubmit)="save()" class="drawer-form">
+    <div class="field-group">
+      <label class="field-label">Nome *</label>
+      <input type="text" formControlName="name" class="field-input" placeholder="Ex: Documentação de API REST" />
+    </div>
+
+    <div class="field-group">
+      <label class="field-label">Descrição *</label>
+      <input type="text" formControlName="description" class="field-input" placeholder="Breve descrição do template" />
+    </div>
+
+    <div class="field-group">
+      <label class="field-label">Tipo *</label>
+      <div class="type-options">
+        <label class="type-option" [class.selected]="form.get('type')?.value === 'technical'">
+          <input type="radio" formControlName="type" value="technical" style="display:none" />
+          <span class="material-symbols-outlined">code</span>
+          Técnico
+        </label>
+        <label class="type-option" [class.selected]="form.get('type')?.value === 'functional'">
+          <input type="radio" formControlName="type" value="functional" style="display:none" />
+          <span class="material-symbols-outlined">groups</span>
+          Funcional
+        </label>
+      </div>
+    </div>
+
+    <div class="field-group example-from-doc">
+      <label class="field-label">Gerar modelo a partir de documentação de exemplo (opcional)</label>
+      <p class="field-hint">
+        Cole abaixo um markdown de referência (como se já estivesse documentado). A IA cria um
+        <strong>modelo com instruções entre aspas simples duplas</strong> (<code>''...''</code>) para cada trecho que
+        deverá ser preenchido na hora de gerar a doc a partir do código.
+      </p>
+      <textarea
+        class="field-textarea example-textarea"
+        [value]="exampleMarkdown()"
+        (input)="onExampleInput($event)"
+        placeholder="Cole aqui um exemplo completo de documentação em Markdown..."
+        spellcheck="false"
+      ></textarea>
+      <button
+        type="button"
+        class="btn-ai"
+        (click)="generateTemplateFromExample()"
+        [disabled]="generatingFromExample()"
+      >
+        <ng-container *ngIf="!generatingFromExample()">
+          <span class="material-symbols-outlined">auto_awesome</span>
+          Gerar prompt-modelo com IA
+        </ng-container>
+        <ng-container *ngIf="generatingFromExample()">
+          <span class="spinner-sm"></span>
+          Gerando…
+        </ng-container>
+      </button>
+    </div>
+
+    <div class="field-group grow">
+      <label class="field-label">Conteúdo do prompt *</label>
+      <textarea formControlName="content" class="field-textarea" placeholder="Digite o prompt base que a IA usará para gerar a documentação..."></textarea>
+    </div>
+
+    <div class="drawer-actions">
+      <button type="button" class="btn-ghost" (click)="closeDrawer()">Cancelar</button>
+      <button type="submit" class="btn-primary" [disabled]="form.invalid || saving()">
+        <span *ngIf="!saving()">{{ editingTemplate() ? 'Salvar alterações' : 'Criar template' }}</span>
+        <span *ngIf="saving()" class="spinner-sm"></span>
+      </button>
+    </div>
+  </form>
+</div>
