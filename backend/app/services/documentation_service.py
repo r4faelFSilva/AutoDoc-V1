@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.models.documentation_record import DocumentationRecord
 from app.models.template import Template
 from app.schemas.documentation import (
+    CommitGithubReadmeRequest,
     CommitGithubReadmeResponse,
     DashboardStatsResponse,
     DocumentationRecordResponse,
@@ -238,6 +239,40 @@ def sync_github_documentation(
         doc=doc,
         commit=CommitGithubReadmeResponse(**commit_result),
     )
+
+
+def commit_github_from_request(
+    db: Session,
+    *,
+    user_id: int,
+    body: CommitGithubReadmeRequest,
+) -> CommitGithubReadmeResponse:
+    if body.doc_id:
+        try:
+            did = int(body.doc_id)
+        except ValueError:
+            raise ValueError("doc_id inválido.") from None
+        row = get_by_id(db, user_id=user_id, doc_id=did)
+        if not row:
+            raise ValueError("Documento não encontrado.")
+        if row.status != "completed":
+            raise ValueError("Documento não está pronto para publicação.")
+        content = row.content
+    else:
+        content = body.content or ""
+
+    try:
+        result = commit_markdown_file(
+            github_url=body.github_url,
+            content=content,
+            github_token=body.github_token.get_secret_value(),
+            branch=body.branch,
+            target_path=body.target_path,
+            commit_message=body.commit_message,
+        )
+    except GitHubCommitError as e:
+        raise ValueError(str(e)) from e
+    return CommitGithubReadmeResponse(**result)
 
 
 def list_history(db: Session, *, user_id: int) -> list[DocumentationRecordResponse]:

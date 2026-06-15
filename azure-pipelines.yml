@@ -42,8 +42,8 @@ steps:
         $branch = "$(AUTODOC_BRANCH)"
         if (-not [string]::IsNullOrWhiteSpace($branch)) { $body.branch = $branch }
         $eval = Invoke-RestMethod -Uri "$(AUTODOC_API_URL)/api/generate/github/evaluate" `
-          -Method Post -ContentType "application/json" -Headers $headers `
-          -Body ($body | ConvertTo-Json)
+          -Method Post -ContentType "application/json; charset=utf-8" -Headers $headers `
+          -Body ($body | ConvertTo-Json -Compress -Depth 5)
         Write-Host "Commit analisado: $($eval.latest_commit_sha) — $($eval.latest_commit_message)"
         Write-Host "Arquivos alterados: $($eval.changed_files_count) | Doc existe: $($eval.doc_exists)"
         Write-Host "Decisao: needs_update=$($eval.needs_update) | confidence=$($eval.confidence)"
@@ -89,20 +89,19 @@ steps:
         if ([string]::IsNullOrWhiteSpace($commitMsg)) {
           $commitMsg = "docs: atualiza documentacao via AutoDoc CI"
         }
-        $content = Get-Content -Path "$(DOC_FILE)" -Raw -Encoding utf8
-        $body = @{
+        $body = [ordered]@{
           github_url     = "$(AUTODOC_GITHUB_URL)"
-          content        = $content
+          doc_id         = "$(DOC_ID)"
           github_token   = "$(AUTODOC_GITHUB_TOKEN)"
           target_path    = $targetPath
           commit_message = $commitMsg
         }
         $branch = "$(AUTODOC_BRANCH)"
         if (-not [string]::IsNullOrWhiteSpace($branch)) { $body.branch = $branch }
+        $json = $body | ConvertTo-Json -Compress -Depth 5
         try {
           $commit = Invoke-RestMethod -Uri "$(AUTODOC_API_URL)/api/generate/github/commit" `
-            -Method Post -ContentType "application/json" -Headers $headers `
-            -Body ($body | ConvertTo-Json)
+            -Method Post -ContentType "application/json; charset=utf-8" -Headers $headers -Body $json
           Write-Host "Commit publicado: $($commit.commit_url)"
           Write-Host "Arquivo: $($commit.target_path) | Branch: $($commit.branch)"
         } catch {

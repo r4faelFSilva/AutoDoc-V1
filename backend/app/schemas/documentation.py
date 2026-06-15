@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
 
 
 class GenerateRequest(BaseModel):
@@ -54,7 +54,8 @@ class DashboardStatsResponse(BaseModel):
 
 class CommitGithubReadmeRequest(BaseModel):
     github_url: str
-    content: str = Field(min_length=1, max_length=500_000)
+    content: str | None = Field(default=None, max_length=500_000)
+    doc_id: str | None = None
     github_token: SecretStr
     branch: str | None = None
     target_path: str = "README.md"
@@ -65,11 +66,23 @@ class CommitGithubReadmeRequest(BaseModel):
 
     @field_validator("content")
     @classmethod
-    def strip_content(cls, v: str) -> str:
+    def strip_content(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
         text = v.strip()
         if not text:
             raise ValueError("Conteúdo da documentação não pode estar vazio.")
         return text
+
+    @model_validator(mode="after")
+    def require_content_or_doc_id(self) -> "CommitGithubReadmeRequest":
+        has_content = self.content is not None and self.content.strip() != ""
+        has_doc = self.doc_id is not None and self.doc_id.strip() != ""
+        if has_content and has_doc:
+            raise ValueError("Informe apenas content ou doc_id, não ambos.")
+        if not has_content and not has_doc:
+            raise ValueError("Informe content ou doc_id.")
+        return self
 
 
 class CommitGithubReadmeResponse(BaseModel):
