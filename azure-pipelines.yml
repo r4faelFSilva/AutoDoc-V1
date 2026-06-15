@@ -46,6 +46,10 @@ steps:
           return ($response.Content | ConvertFrom-Json)
         }
 
+        if ([string]::IsNullOrWhiteSpace($env:AUTODOC_GITHUB_TOKEN)) {
+          throw "AUTODOC_GITHUB_TOKEN vazio. Verifique o variable group autodoc-local."
+        }
+
         $headers = @{
           Authorization = "Bearer $(AUTODOC_TOKEN)"
           "X-GitHub-Token" = $env:AUTODOC_GITHUB_TOKEN
@@ -53,8 +57,9 @@ steps:
         $targetPath = "$(AUTODOC_COMMIT_PATH)"
         if ([string]::IsNullOrWhiteSpace($targetPath)) { $targetPath = "README.md" }
         $payload = @{
-          github_url  = "$(AUTODOC_GITHUB_URL)"
-          target_path = $targetPath
+          github_url   = "$(AUTODOC_GITHUB_URL)"
+          github_token = $env:AUTODOC_GITHUB_TOKEN
+          target_path  = $targetPath
         }
         $branch = "$(AUTODOC_BRANCH)"
         if (-not [string]::IsNullOrWhiteSpace($branch)) { $payload.branch = $branch }
@@ -62,7 +67,8 @@ steps:
         $eval = Invoke-AutoDocJsonPost -Uri "$(AUTODOC_API_URL)/api/generate/github/evaluate" `
           -Headers $headers -Payload $payload
         Write-Host "Commit analisado: $($eval.latest_commit_sha) — $($eval.latest_commit_message)"
-        Write-Host "Arquivos alterados: $($eval.changed_files_count) | Doc existe: $($eval.doc_exists)"
+        Write-Host "Modo: $($eval.evaluation_mode) | AutoDoc: $($eval.is_autodoc_documentation) | Doc alterada no commit: $($eval.doc_changed_in_latest_commit)"
+        Write-Host "Arquivos de codigo alterados: $($eval.changed_files_count) | Doc existe: $($eval.doc_exists)"
         Write-Host "Decisao: needs_update=$($eval.needs_update) | confidence=$($eval.confidence)"
         Write-Host "Motivo: $($eval.reason)"
         $flag = if ($eval.needs_update) { "true" } else { "false" }
@@ -108,6 +114,10 @@ steps:
         }
         Write-Host "Publicando documento id=$docId (conteudo vem do SQLite, mesmo fluxo da tela)"
 
+        if ([string]::IsNullOrWhiteSpace($env:AUTODOC_GITHUB_TOKEN)) {
+          throw "AUTODOC_GITHUB_TOKEN vazio. Verifique o variable group autodoc-local."
+        }
+
         $headers = @{
           Authorization = "Bearer $(AUTODOC_TOKEN)"
           "X-GitHub-Token" = $env:AUTODOC_GITHUB_TOKEN
@@ -121,6 +131,7 @@ steps:
         $payload = [ordered]@{
           github_url     = "$(AUTODOC_GITHUB_URL)"
           doc_id         = $docId
+          github_token   = $env:AUTODOC_GITHUB_TOKEN
           target_path    = $targetPath
           commit_message = $commitMsg
         }
@@ -128,7 +139,7 @@ steps:
         if (-not [string]::IsNullOrWhiteSpace($branch)) { $payload.branch = $branch }
 
         $json = ($payload | ConvertTo-Json -Compress -Depth 5)
-        Write-Host "Payload JSON ($($json.Length) bytes, sem token no body)"
+        Write-Host "Payload JSON ($($json.Length) bytes, doc_id=$docId)"
         $bytes = [System.Text.Encoding]::UTF8.GetBytes($json)
 
         try {

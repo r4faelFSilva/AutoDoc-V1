@@ -12,35 +12,90 @@ class DocumentationEvaluatorError(Exception):
     pass
 
 
+def _base_result(ctx: CommitAnalysisContext) -> dict[str, str | bool | int]:
+    return {
+        "latest_commit_sha": ctx.latest_commit.sha,
+        "latest_commit_message": ctx.latest_commit.message,
+        "doc_exists": ctx.doc.doc_exists,
+        "changed_files_count": len(ctx.changed_files),
+        "is_autodoc_documentation": ctx.doc.is_autodoc_documentation,
+        "doc_changed_in_latest_commit": ctx.doc_changed_in_latest_commit,
+    }
+
+
+def _bootstrap_result(
+    ctx: CommitAnalysisContext,
+    *,
+    reason: str,
+) -> dict[str, str | bool | int]:
+    return {
+        **_base_result(ctx),
+        "needs_update": True,
+        "reason": reason,
+        "confidence": "high",
+        "evaluation_mode": "bootstrap",
+    }
+
+
+def _skipped_result(
+    ctx: CommitAnalysisContext,
+    *,
+    reason: str,
+) -> dict[str, str | bool | int]:
+    return {
+        **_base_result(ctx),
+        "needs_update": False,
+        "reason": reason,
+        "confidence": "high",
+        "evaluation_mode": "skipped",
+    }
+
+
 def evaluate_documentation_update(ctx: CommitAnalysisContext) -> dict[str, str | bool | int]:
     """
-    Retorna needs_update, reason, confidence, latest_commit_sha, latest_commit_message,
-    doc_exists, changed_files_count.
+    Retorna needs_update, reason, confidence, evaluation_mode e metadados do commit/doc.
     """
     if not ctx.doc.doc_exists:
-        return {
-            "needs_update": True,
-            "reason": f"O arquivo `{ctx.target_path}` não existe no repositório; documentação deve ser criada.",
-            "confidence": "high",
-            "latest_commit_sha": ctx.latest_commit.sha,
-            "latest_commit_message": ctx.latest_commit.message,
-            "doc_exists": False,
-            "changed_files_count": len(ctx.changed_files),
-        }
+        return _bootstrap_result(
+            ctx,
+            reason=f"O arquivo `{ctx.target_path}` não existe no repositório; documentação será criada.",
+        )
+
+    if ctx.doc_changed_in_latest_commit and not ctx.doc.is_substantial:
+        return _bootstrap_result(
+            ctx,
+            reason=(
+                f"A documentação em `{ctx.target_path}` foi removida ou esvaziada no último commit; "
+                "será regenerada."
+            ),
+        )
+
+    if not ctx.doc.is_substantial:
+        return _bootstrap_result(
+            ctx,
+            reason=(
+                f"`{ctx.target_path}` existe, mas não contém documentação técnica suficiente; "
+                "será gerada do zero."
+            ),
+        )
+
+    if not ctx.doc.is_autodoc_documentation:
+        return _bootstrap_result(
+            ctx,
+            reason=(
+                f"`{ctx.target_path}` não foi gerado pelo AutoDoc (marcador ausente); "
+                "documentação será criada do zero."
+            ),
+        )
 
     if not ctx.changed_files:
-        return {
-            "needs_update": False,
-            "reason": (
-                f"O último commit ({ctx.latest_commit.sha[:7]}) não alterou arquivos de código relevantes "
-                f"além de `{ctx.target_path}`."
+        return _skipped_result(
+            ctx,
+            reason=(
+                f"Documentação AutoDoc intacta. O último commit ({ctx.latest_commit.sha[:7]}) "
+                f"não alterou arquivos de código relevantes."
             ),
-            "confidence": "high",
-            "latest_commit_sha": ctx.latest_commit.sha,
-            "latest_commit_message": ctx.latest_commit.message,
-            "doc_exists": True,
-            "changed_files_count": 0,
-        }
+        )
 
     return _evaluate_with_ai(ctx)
 
@@ -57,19 +112,21 @@ def _evaluate_with_ai(ctx: CommitAnalysisContext) -> dict[str, str | bool | int]
 
     user_content = (
         f"Repositório: {ctx.owner}/{ctx.repo} (branch: {ctx.branch})\n"
-        f"Arquivo de documentação alvo: `{ctx.target_path}`\n\n"
+        f"Arquivo de documentação alvo: `{ctx.target_path}`\n"
+        "Esta documentação JÁ FOI gerada pelo AutoDoc (marcador presente).\n\n"
         f"Último commit: {ctx.latest_commit.sha}\n"
         f"Mensagem: {ctx.latest_commit.message}\n\n"
-        f"Arquivos alterados no commit ({len(ctx.changed_files)}):\n{files_block}\n\n"
+        f"Arquivos de código alterados no commit ({len(ctx.changed_files)}):\n{files_block}\n\n"
         f"Conteúdo atual de `{ctx.target_path}`:\n\n```markdown\n{doc_preview}\n```\n"
     )
 
     system_prompt = (
-        "Você analisa se a documentação Markdown de um projeto de software precisa ser atualizada "
-        "após um commit no código.\n"
+        "Você analisa se uma documentação Markdown JÁ GERADA PELO AutoDoc precisa ser atualizada "
+        "após mudanças de código em um commit.\n"
         "Responda APENAS com JSON válido no formato:\n"
         '{"needs_update": boolean, "reason": string, "confidence": "high"|"medium"|"low"}\n\n'
         "Regras:\n"
+        "- Compare o diff de código com a documentação AutoDoc existente.\n"
         "- needs_update=true se mudanças no código afetam APIs, arquitetura, setup, fluxos ou "
         "informações que a doc deveria descrever.\n"
         "- needs_update=false se as mudanças são cosméticas, refatoração interna sem impacto na doc, "
@@ -93,11 +150,9 @@ def _evaluate_with_ai(ctx: CommitAnalysisContext) -> dict[str, str | bool | int]
         confidence = "medium"
 
     return {
+        **_base_result(ctx),
         "needs_update": needs_update,
         "reason": reason,
         "confidence": confidence,
-        "latest_commit_sha": ctx.latest_commit.sha,
-        "latest_commit_message": ctx.latest_commit.message,
-        "doc_exists": ctx.doc.doc_exists,
-        "changed_files_count": len(ctx.changed_files),
+        "evaluation_mode": "maintenance",
     }

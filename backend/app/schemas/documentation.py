@@ -103,10 +103,13 @@ class GithubDocEvaluateResponse(BaseModel):
     needs_update: bool
     reason: str
     confidence: str
+    evaluation_mode: str
     latest_commit_sha: str
     latest_commit_message: str
     doc_exists: bool
     changed_files_count: int
+    is_autodoc_documentation: bool
+    doc_changed_in_latest_commit: bool
 
 
 class GithubDocSyncRequest(BaseModel):

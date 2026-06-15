@@ -8,6 +8,7 @@ from urllib.parse import quote
 
 import httpx
 
+from app.services.autodoc_marker import has_autodoc_marker, is_substantial_documentation
 from app.services.github_archive import GitHubArchiveError, parse_github_url
 from app.services.github_commit import GitHubCommitError, _headers, _resolve_branch, _validate_target_path
 
@@ -51,6 +52,8 @@ class RepoDocSnapshot:
     branch: str
     content: str | None
     doc_exists: bool
+    is_autodoc_documentation: bool
+    is_substantial: bool
 
 
 @dataclass
@@ -62,6 +65,7 @@ class CommitAnalysisContext:
     latest_commit: LatestCommitInfo
     doc: RepoDocSnapshot
     changed_files: list[ChangedFile]
+    doc_changed_in_latest_commit: bool
 
 
 def fetch_commit_analysis_context(
@@ -91,13 +95,13 @@ def fetch_commit_analysis_context(
             token=token,
         )
         latest = _fetch_latest_commit(client, owner=owner, repo=repo, branch=ref, token=token)
-        changed = _fetch_commit_files(
+        changed, doc_changed = _fetch_commit_files(
             client,
             owner=owner,
             repo=repo,
             sha=latest.sha,
             token=token,
-            exclude_path=path,
+            target_path=path,
         )
         doc_content = _fetch_file_content(
             client,
@@ -119,8 +123,11 @@ def fetch_commit_analysis_context(
             branch=ref,
             content=doc_content,
             doc_exists=doc_content is not None,
+            is_autodoc_documentation=has_autodoc_marker(doc_content),
+            is_substantial=is_substantial_documentation(doc_content),
         ),
         changed_files=changed,
+        doc_changed_in_latest_commit=doc_changed,
     )
 
 
@@ -155,9 +162,13 @@ def _fetch_latest_commit(
     return LatestCommitInfo(sha=sha, message=message, html_url=html_url)
 
 
-def _should_skip_file(filename: str, exclude_path: str) -> bool:
-    norm = filename.replace("\\", "/").lstrip("/")
-    if norm == exclude_path:
+def _normalize_path(filename: str) -> str:
+    return filename.replace("\\", "/").lstrip("/")
+
+
+def _should_skip_code_file(filename: str, target_path: str) -> bool:
+    norm = _normalize_path(filename)
+    if norm == target_path:
         return True
     parts = {p.lower() for p in norm.split("/")}
     if parts & SKIP_PATH_PARTS:
@@ -172,8 +183,8 @@ def _fetch_commit_files(
     repo: str,
     sha: str,
     token: str,
-    exclude_path: str,
-) -> list[ChangedFile]:
+    target_path: str,
+) -> tuple[list[ChangedFile], bool]:
     r = client.get(
         f"{GITHUB_API}/repos/{owner}/{repo}/commits/{sha}",
         headers=_headers(token),
@@ -183,11 +194,18 @@ def _fetch_commit_files(
         raise GitHubCommitError(f"GitHub API erro {r.status_code} ao obter arquivos do commit.")
     files = r.json().get("files") or []
     result: list[ChangedFile] = []
+    doc_changed = False
+    target_norm = _normalize_path(target_path)
     for item in files:
         if not isinstance(item, dict):
             continue
         filename = str(item.get("filename") or "")
-        if not filename or _should_skip_file(filename, exclude_path):
+        if not filename:
+            continue
+        if _normalize_path(filename) == target_norm:
+            doc_changed = True
+            continue
+        if _should_skip_code_file(filename, target_path):
             continue
         status = str(item.get("status") or "modified")
         patch = str(item.get("patch") or "")
@@ -196,7 +214,7 @@ def _fetch_commit_files(
         result.append(ChangedFile(filename=filename, status=status, patch_summary=patch))
         if len(result) >= MAX_FILES_IN_SUMMARY:
             break
-    return result
+    return result, doc_changed
 
 
 def _fetch_file_content(

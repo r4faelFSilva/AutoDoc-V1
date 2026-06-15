@@ -8,6 +8,7 @@ from urllib.parse import quote
 
 import httpx
 
+from app.services.autodoc_marker import ensure_autodoc_marker
 from app.services.github_archive import GitHubArchiveError, parse_github_url
 
 GITHUB_API = "https://api.github.com"
@@ -144,6 +145,7 @@ def commit_markdown_file(
 
     path = _validate_target_path(target_path)
     message = commit_message.strip() or "docs: atualiza documentação via AutoDoc"
+    publish_content = ensure_autodoc_marker(content.strip())
 
     with httpx.Client(follow_redirects=True, timeout=60.0) as client:
         ref = _resolve_branch(
@@ -171,14 +173,14 @@ def commit_markdown_file(
                 branch=ref,
                 token=token,
             )
-            if existing_content is not None and existing_content.strip() == content.strip():
+            if existing_content is not None and existing_content.strip() == publish_content.strip():
                 raise GitHubCommitError(
                     "SKIP_UNCHANGED: o conteúdo gerado é idêntico ao arquivo remoto; commit não necessário."
                 )
 
         body: dict[str, str] = {
             "message": message,
-            "content": base64.b64encode(content.encode("utf-8")).decode("ascii"),
+            "content": base64.b64encode(publish_content.encode("utf-8")).decode("ascii"),
             "branch": ref,
         }
         if existing_sha:
