@@ -179,8 +179,9 @@ def sync_github_documentation(
     *,
     user_id: int,
     body: GithubDocSyncRequest,
+    github_token: str,
 ) -> GithubDocSyncResponse:
-    token = body.github_token.get_secret_value()
+    token = github_token
     evaluation = evaluate_github_documentation(
         github_url=body.github_url,
         github_token=token,
@@ -246,6 +247,7 @@ def commit_github_from_request(
     *,
     user_id: int,
     body: CommitGithubReadmeRequest,
+    github_token: str,
 ) -> CommitGithubReadmeResponse:
     if body.doc_id:
         try:
@@ -265,7 +267,7 @@ def commit_github_from_request(
         result = commit_markdown_file(
             github_url=body.github_url,
             content=content,
-            github_token=body.github_token.get_secret_value(),
+            github_token=github_token,
             branch=body.branch,
             target_path=body.target_path,
             commit_message=body.commit_message,

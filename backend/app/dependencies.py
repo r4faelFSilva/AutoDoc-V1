@@ -1,7 +1,8 @@
 from typing import Annotated
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from pydantic import SecretStr
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -9,6 +10,22 @@ from app.models.user import User
 from app.services import auth_service
 
 security = HTTPBearer(auto_error=False)
+
+
+def resolve_github_token(
+    body_token: SecretStr | None,
+    header_token: str | None,
+) -> str:
+    if header_token and header_token.strip():
+        return header_token.strip()
+    if body_token is not None:
+        value = body_token.get_secret_value().strip()
+        if value:
+            return value
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="Token GitHub não informado. Use o campo github_token ou o header X-GitHub-Token.",
+    )
 
 
 def get_current_user(

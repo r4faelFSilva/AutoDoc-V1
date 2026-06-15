@@ -1,8 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.dependencies import CurrentUser
+from app.dependencies import CurrentUser, resolve_github_token
 from app.schemas.documentation import (
     CommitGithubReadmeRequest,
     CommitGithubReadmeResponse,
@@ -56,9 +56,16 @@ def commit_github_readme(
     body: CommitGithubReadmeRequest,
     user: CurrentUser,
     db: Session = Depends(get_db),
+    x_github_token: str | None = Header(default=None, alias="X-GitHub-Token"),
 ) -> CommitGithubReadmeResponse:
+    token = resolve_github_token(body.github_token, x_github_token)
     try:
-        return documentation_service.commit_github_from_request(db, user_id=user.id, body=body)
+        return documentation_service.commit_github_from_request(
+            db,
+            user_id=user.id,
+            body=body,
+            github_token=token,
+        )
     except ValueError as e:
         detail = str(e)
         if detail.startswith("SKIP_UNCHANGED:"):
@@ -70,11 +77,13 @@ def commit_github_readme(
 def evaluate_github_doc(
     body: GithubDocEvaluateRequest,
     _user: CurrentUser,
+    x_github_token: str | None = Header(default=None, alias="X-GitHub-Token"),
 ) -> GithubDocEvaluateResponse:
+    token = resolve_github_token(body.github_token, x_github_token)
     try:
         return documentation_service.evaluate_github_documentation(
             github_url=body.github_url,
-            github_token=body.github_token.get_secret_value(),
+            github_token=token,
             branch=body.branch,
             target_path=body.target_path,
         )
@@ -87,9 +96,16 @@ def sync_github_doc(
     body: GithubDocSyncRequest,
     user: CurrentUser,
     db: Session = Depends(get_db),
+    x_github_token: str | None = Header(default=None, alias="X-GitHub-Token"),
 ) -> GithubDocSyncResponse:
+    token = resolve_github_token(body.github_token, x_github_token)
     try:
-        return documentation_service.sync_github_documentation(db, user_id=user.id, body=body)
+        return documentation_service.sync_github_documentation(
+            db,
+            user_id=user.id,
+            body=body,
+            github_token=token,
+        )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 

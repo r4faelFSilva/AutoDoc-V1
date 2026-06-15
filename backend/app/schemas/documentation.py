@@ -56,7 +56,7 @@ class CommitGithubReadmeRequest(BaseModel):
     github_url: str
     content: str | None = Field(default=None, max_length=500_000)
     doc_id: str | None = None
-    github_token: SecretStr
+    github_token: SecretStr | None = None
     branch: str | None = None
     target_path: str = "README.md"
     commit_message: str = Field(
@@ -94,7 +94,7 @@ class CommitGithubReadmeResponse(BaseModel):
 
 class GithubDocEvaluateRequest(BaseModel):
     github_url: str
-    github_token: SecretStr
+    github_token: SecretStr | None = None
     branch: str | None = None
     target_path: str = "README.md"
 
@@ -111,7 +111,7 @@ class GithubDocEvaluateResponse(BaseModel):
 
 class GithubDocSyncRequest(BaseModel):
     github_url: str
-    github_token: SecretStr
+    github_token: SecretStr | None = None
     template_id: str
     output_type: str = Field(default="technical", pattern="^(technical|functional)$")
     branch: str | None = None
