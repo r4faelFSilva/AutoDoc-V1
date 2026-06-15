@@ -24,7 +24,12 @@ export class TemplatesComponent implements OnInit {
 
   /** Markdown de uma documentação já pronta (exemplo) para a IA transformar em modelo com ''placeholders'' */
   exampleMarkdown = signal('');
+  exampleFilename = signal<string | null>(null);
+  suggestedDownloadFilename = signal<string | null>(null);
   generatingFromExample = signal(false);
+
+  private readonly maxExampleBytes = 500 * 1024;
+  private readonly allowedExampleExtensions = ['.md', '.markdown', '.txt'];
 
   form: FormGroup;
 
@@ -48,6 +53,46 @@ export class TemplatesComponent implements OnInit {
   onExampleInput(event: Event): void {
     const v = (event.target as HTMLTextAreaElement).value;
     this.exampleMarkdown.set(v);
+    if (v.trim()) {
+      this.exampleFilename.set(null);
+    }
+  }
+
+  onExampleFileChange(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+
+    const ext = file.name.includes('.') ? file.name.slice(file.name.lastIndexOf('.')).toLowerCase() : '';
+    if (!this.allowedExampleExtensions.includes(ext)) {
+      this.snackBar.open('Selecione um arquivo .md, .markdown ou .txt.', 'Fechar', {
+        duration: 4500,
+        panelClass: ['snack-error'],
+      });
+      input.value = '';
+      return;
+    }
+    if (file.size > this.maxExampleBytes) {
+      this.snackBar.open('Arquivo muito grande. Limite: 500 KB.', 'Fechar', {
+        duration: 4500,
+        panelClass: ['snack-error'],
+      });
+      input.value = '';
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const text = String(reader.result ?? '');
+      this.exampleMarkdown.set(text);
+      this.exampleFilename.set(file.name);
+    };
+    reader.readAsText(file);
+  }
+
+  clearExampleFile(): void {
+    this.exampleMarkdown.set('');
+    this.exampleFilename.set(null);
   }
 
   loadTemplates(): void {
@@ -61,6 +106,8 @@ export class TemplatesComponent implements OnInit {
   openNew(): void {
     this.editingTemplate.set(null);
     this.exampleMarkdown.set('');
+    this.exampleFilename.set(null);
+    this.suggestedDownloadFilename.set(null);
     this.form.reset({ type: 'technical' });
     this.drawerOpen.set(true);
   }
@@ -68,6 +115,8 @@ export class TemplatesComponent implements OnInit {
   openEdit(template: Template): void {
     this.editingTemplate.set(template);
     this.exampleMarkdown.set('');
+    this.exampleFilename.set(null);
+    this.suggestedDownloadFilename.set(null);
     this.form.patchValue(template);
     this.drawerOpen.set(true);
   }
@@ -100,6 +149,7 @@ export class TemplatesComponent implements OnInit {
             content: suggestion.content,
             type: suggestion.type,
           });
+          this.suggestedDownloadFilename.set(suggestion.suggested_filename ?? null);
           this.snackBar.open('Modelo gerado pela IA — revise e salve o template.', '', {
             duration: 4000,
             panelClass: ['snack-success'],
@@ -168,5 +218,36 @@ export class TemplatesComponent implements OnInit {
 
   typeBadge(type: TemplateType): string {
     return type === 'technical' ? 'Técnico' : 'Funcional';
+  }
+
+  downloadTemplateMd(): void {
+    const content = (this.form.get('content')?.value as string)?.trim();
+    if (!content) {
+      this.snackBar.open('Preencha o conteúdo do template antes de baixar.', 'Fechar', {
+        duration: 4000,
+        panelClass: ['snack-error'],
+      });
+      return;
+    }
+    const suggested = this.suggestedDownloadFilename();
+    const name = (this.form.get('name')?.value as string)?.trim();
+    const filename =
+      suggested ||
+      (name
+        ? `${name
+            .toLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/^-|-$/g, '') || 'template'}.md`
+        : 'template-autodoc.md');
+
+    const blob = new Blob([content], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename.endsWith('.md') ? filename : `${filename}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 }

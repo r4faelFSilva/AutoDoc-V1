@@ -29,6 +29,10 @@ export class GenerateComponent implements OnInit {
   uploadedFilename = signal<string | null>(null);
   editMode = signal(false);
   editedContent = signal('');
+  githubToken = signal('');
+  commitTargetPath = signal('README.md');
+  commitMessage = signal('docs: atualiza documentação via AutoDoc');
+  publishing = signal(false);
 
   outputTypes = [
     { value: 'technical', label: 'Técnica (para devs)', icon: 'code' },
@@ -66,6 +70,7 @@ export class GenerateComponent implements OnInit {
   setInputMode(mode: 'paste' | 'upload' | 'github'): void {
     this.inputMode.set(mode);
     this.result.set(null);
+    this.githubToken.set('');
     this.applyValidatorsForMode();
   }
 
@@ -191,5 +196,83 @@ export class GenerateComponent implements OnInit {
           panelClass: ['snack-error'],
         }),
     );
+  }
+
+  canPublishToGithub(): boolean {
+    const doc = this.result();
+    return (
+      this.inputMode() === 'github' &&
+      !!doc &&
+      doc.status === 'completed' &&
+      !!doc.github_url &&
+      !!this.editedContent().trim()
+    );
+  }
+
+  publishToGithub(): void {
+    if (!this.canPublishToGithub() || this.publishing()) return;
+
+    const token = this.githubToken().trim();
+    if (!token) {
+      this.snackBar.open('Informe um Personal Access Token do GitHub.', 'Fechar', {
+        duration: 4500,
+        panelClass: ['snack-error'],
+      });
+      return;
+    }
+
+    const doc = this.result()!;
+    this.publishing.set(true);
+
+    this.docService
+      .commitGithubReadme({
+        github_url: doc.github_url!,
+        content: this.editedContent(),
+        github_token: token,
+        branch: (this.form.get('branch')?.value as string)?.trim() || undefined,
+        target_path: this.commitTargetPath().trim() || 'README.md',
+        commit_message: this.commitMessage().trim() || undefined,
+      })
+      .subscribe({
+        next: res => {
+          this.publishing.set(false);
+          this.githubToken.set('');
+          const msg = res.commit_url
+            ? `Publicado em ${res.target_path} (${res.branch}).`
+            : `Publicado em ${res.target_path} (${res.branch}).`;
+          this.snackBar.open(msg, res.commit_url ? 'Ver commit' : 'Fechar', {
+            duration: 8000,
+            panelClass: ['snack-success'],
+          }).onAction().subscribe(() => {
+            if (res.commit_url) {
+              window.open(res.commit_url, '_blank', 'noopener');
+            }
+          });
+        },
+        error: (err: unknown) => {
+          this.publishing.set(false);
+          this.githubToken.set('');
+          let msg = 'Não foi possível publicar no GitHub.';
+          if (err instanceof HttpErrorResponse) {
+            const d = err.error?.detail;
+            if (typeof d === 'string') {
+              msg = d;
+            }
+          }
+          this.snackBar.open(msg, 'Fechar', { duration: 6000, panelClass: ['snack-error'] });
+        },
+      });
+  }
+
+  onGithubTokenInput(event: Event): void {
+    this.githubToken.set((event.target as HTMLInputElement).value);
+  }
+
+  onCommitTargetPathInput(event: Event): void {
+    this.commitTargetPath.set((event.target as HTMLInputElement).value);
+  }
+
+  onCommitMessageInput(event: Event): void {
+    this.commitMessage.set((event.target as HTMLTextAreaElement).value);
   }
 }

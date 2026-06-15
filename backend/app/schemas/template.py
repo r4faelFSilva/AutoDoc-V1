@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class TemplateBase(BaseModel):
@@ -26,9 +26,18 @@ class GenerateTemplateFromExampleRequest(BaseModel):
     example_markdown: str = Field(min_length=80, max_length=100_000)
     type: str = Field(default="technical", pattern="^(technical|functional)$")
 
+    @field_validator("example_markdown")
+    @classmethod
+    def strip_and_validate_markdown(cls, v: str) -> str:
+        text = v.strip()
+        if len(text) < 80:
+            raise ValueError("O exemplo deve ter pelo menos 80 caracteres úteis.")
+        return text
+
 
 class GenerateTemplateFromExampleResponse(BaseModel):
     name: str
     description: str
     content: str
     type: str
+    suggested_filename: str | None = None

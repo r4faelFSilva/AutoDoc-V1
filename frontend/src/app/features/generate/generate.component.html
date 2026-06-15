@@ -176,6 +176,64 @@
         <div *ngIf="!editMode()" class="markdown-body" #markdownResult>
           <markdown [data]="editedContent()"></markdown>
         </div>
+
+        <div *ngIf="canPublishToGithub()" class="github-publish-panel">
+          <h3 class="publish-title">
+            <span class="material-symbols-outlined">publish</span>
+            Publicar no repositório
+          </h3>
+          <p class="publish-hint">
+            O token é usado apenas nesta requisição e <strong>não é salvo</strong> no sistema.
+            Crie um PAT em GitHub com escopo <code>repo</code> (privado) ou <code>public_repo</code> (público).
+          </p>
+          <label class="field-label">Personal Access Token</label>
+          <input
+            type="password"
+            class="publish-input"
+            [value]="githubToken()"
+            (input)="onGithubTokenInput($event)"
+            autocomplete="new-password"
+            placeholder="ghp_..."
+          />
+          <div class="publish-row">
+            <div class="publish-field">
+              <label class="field-label">Arquivo de destino</label>
+              <input
+                type="text"
+                class="publish-input"
+                [value]="commitTargetPath()"
+                (input)="onCommitTargetPathInput($event)"
+                placeholder="README.md"
+                spellcheck="false"
+              />
+            </div>
+            <div class="publish-field">
+              <label class="field-label">Mensagem do commit</label>
+              <textarea
+                class="publish-input publish-textarea"
+                [value]="commitMessage()"
+                (input)="onCommitMessageInput($event)"
+                rows="2"
+                spellcheck="false"
+              ></textarea>
+            </div>
+          </div>
+          <button
+            type="button"
+            class="btn-publish"
+            (click)="publishToGithub()"
+            [disabled]="publishing() || !githubToken().trim()"
+          >
+            <ng-container *ngIf="!publishing()">
+              <span class="material-symbols-outlined">cloud_upload</span>
+              Publicar README no GitHub
+            </ng-container>
+            <ng-container *ngIf="publishing()">
+              <span class="spinner-sm"></span>
+              Publicando...
+            </ng-container>
+          </button>
+        </div>
       </ng-container>
     </div>
   </div>

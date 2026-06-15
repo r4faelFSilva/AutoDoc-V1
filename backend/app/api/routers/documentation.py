@@ -4,6 +4,8 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.dependencies import CurrentUser
 from app.schemas.documentation import (
+    CommitGithubReadmeRequest,
+    CommitGithubReadmeResponse,
     DashboardStatsResponse,
     DocumentationRecordResponse,
     GenerateGithubRequest,
@@ -12,6 +14,7 @@ from app.schemas.documentation import (
     UpdateDocumentationRequest,
 )
 from app.services import documentation_service
+from app.services.github_commit import GitHubCommitError, commit_markdown_file
 
 router = APIRouter(tags=["documentation"])
 
@@ -42,6 +45,25 @@ def generate_github(
     try:
         return documentation_service.generate_from_github(db, user_id=user.id, body=body)
     except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+
+
+@router.post("/generate/github/commit", response_model=CommitGithubReadmeResponse)
+def commit_github_readme(
+    body: CommitGithubReadmeRequest,
+    _user: CurrentUser,
+) -> CommitGithubReadmeResponse:
+    try:
+        result = commit_markdown_file(
+            github_url=body.github_url,
+            content=body.content,
+            github_token=body.github_token.get_secret_value(),
+            branch=body.branch,
+            target_path=body.target_path,
+            commit_message=body.commit_message,
+        )
+        return CommitGithubReadmeResponse(**result)
+    except GitHubCommitError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 
 

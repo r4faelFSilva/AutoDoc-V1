@@ -41,3 +41,19 @@ export interface SearchResult {
   snippet: string;
   created_at: string;
 }
+
+export interface CommitGithubReadmeRequest {
+  github_url: string;
+  content: string;
+  github_token: string;
+  branch?: string;
+  target_path?: string;
+  commit_message?: string;
+}
+
+export interface CommitGithubReadmeResponse {
+  commit_sha: string;
+  commit_url: string;
+  target_path: string;
+  branch: string;
+}

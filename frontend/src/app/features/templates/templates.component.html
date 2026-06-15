@@ -121,15 +121,34 @@
     <div class="field-group example-from-doc">
       <label class="field-label">Gerar modelo a partir de documentação de exemplo (opcional)</label>
       <p class="field-hint">
-        Cole abaixo um markdown de referência (como se já estivesse documentado). A IA cria um
+        Cole ou envie um arquivo <strong>.md</strong> de referência (como se já estivesse documentado). A IA cria um
         <strong>modelo com instruções entre aspas simples duplas</strong> (<code>''...''</code>) para cada trecho que
         deverá ser preenchido na hora de gerar a doc a partir do código.
       </p>
+      <label class="example-upload-area" [class.has-file]="exampleFilename()">
+        <input
+          type="file"
+          (change)="onExampleFileChange($event)"
+          accept=".md,.markdown,.txt"
+          style="display:none"
+        />
+        <ng-container *ngIf="!exampleFilename(); else exampleFileSelected">
+          <span class="material-symbols-outlined">upload_file</span>
+          <span>Enviar arquivo .md ou .txt</span>
+        </ng-container>
+        <ng-template #exampleFileSelected>
+          <span class="material-symbols-outlined success">description</span>
+          <span>{{ exampleFilename() }}</span>
+          <button type="button" class="btn-clear-file" (click)="clearExampleFile(); $event.preventDefault(); $event.stopPropagation()">
+            Remover
+          </button>
+        </ng-template>
+      </label>
       <textarea
         class="field-textarea example-textarea"
         [value]="exampleMarkdown()"
         (input)="onExampleInput($event)"
-        placeholder="Cole aqui um exemplo completo de documentação em Markdown..."
+        placeholder="Ou cole aqui um exemplo completo de documentação em Markdown..."
         spellcheck="false"
       ></textarea>
       <button
@@ -150,7 +169,13 @@
     </div>
 
     <div class="field-group grow">
-      <label class="field-label">Conteúdo do prompt *</label>
+      <div class="content-header-row">
+        <label class="field-label">Conteúdo do prompt *</label>
+        <button type="button" class="btn-download-md" (click)="downloadTemplateMd()" [disabled]="!form.get('content')?.value">
+          <span class="material-symbols-outlined">download</span>
+          Baixar .md
+        </button>
+      </div>
       <textarea formControlName="content" class="field-textarea" placeholder="Digite o prompt base que a IA usará para gerar a documentação..."></textarea>
     </div>
 

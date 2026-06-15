@@ -28,4 +28,5 @@ export interface GeneratedTemplateSuggestion {
   description: string;
   content: string;
   type: TemplateType;
+  suggested_filename?: string | null;
 }

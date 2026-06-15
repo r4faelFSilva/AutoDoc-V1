@@ -8,6 +8,8 @@ import {
   GenerateGithubRequest,
   DashboardStats,
   SearchResult,
+  CommitGithubReadmeRequest,
+  CommitGithubReadmeResponse,
 } from '../models/documentation.model';
 
 const API_BASE = '/api';
@@ -55,5 +57,9 @@ export class DocumentationService {
 
   getStats(): Observable<DashboardStats> {
     return this.http.get<DashboardStats>(`${API_BASE}/stats`);
+  }
+
+  commitGithubReadme(request: CommitGithubReadmeRequest): Observable<CommitGithubReadmeResponse> {
+    return this.http.post<CommitGithubReadmeResponse>(`${API_BASE}/generate/github/commit`, request);
   }
 }
