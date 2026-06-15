@@ -87,6 +87,39 @@ def _get_existing_sha(
     return str(sha) if sha else None
 
 
+def _fetch_existing_content(
+    client: httpx.Client,
+    *,
+    owner: str,
+    repo: str,
+    path: str,
+    branch: str,
+    token: str,
+) -> str | None:
+    encoded_path = quote(path, safe="/")
+    r = client.get(
+        f"{GITHUB_API}/repos/{owner}/{repo}/contents/{encoded_path}",
+        headers=_headers(token),
+        params={"ref": branch},
+        follow_redirects=True,
+        timeout=30.0,
+    )
+    if r.status_code == 404:
+        return None
+    if r.status_code != 200:
+        return None
+    data = r.json()
+    if isinstance(data, list):
+        return None
+    raw = data.get("content") or ""
+    if data.get("encoding") == "base64" and raw:
+        try:
+            return base64.b64decode(raw.replace("\n", "")).decode("utf-8")
+        except UnicodeDecodeError:
+            return base64.b64decode(raw.replace("\n", "")).decode("utf-8", errors="replace")
+    return str(raw) if raw else None
+
+
 def commit_markdown_file(
     *,
     github_url: str,
@@ -128,6 +161,20 @@ def commit_markdown_file(
             branch=ref,
             token=token,
         )
+
+        if existing_sha:
+            existing_content = _fetch_existing_content(
+                client,
+                owner=owner,
+                repo=repo,
+                path=path,
+                branch=ref,
+                token=token,
+            )
+            if existing_content is not None and existing_content.strip() == content.strip():
+                raise GitHubCommitError(
+                    "SKIP_UNCHANGED: o conteúdo gerado é idêntico ao arquivo remoto; commit não necessário."
+                )
 
         body: dict[str, str] = {
             "message": message,

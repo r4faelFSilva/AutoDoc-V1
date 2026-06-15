@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, SecretStr, field_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 
 
 class GenerateRequest(BaseModel):
@@ -77,3 +77,41 @@ class CommitGithubReadmeResponse(BaseModel):
     commit_url: str
     target_path: str
     branch: str
+
+
+class GithubDocEvaluateRequest(BaseModel):
+    github_url: str
+    github_token: SecretStr
+    branch: str | None = None
+    target_path: str = "README.md"
+
+
+class GithubDocEvaluateResponse(BaseModel):
+    needs_update: bool
+    reason: str
+    confidence: str
+    latest_commit_sha: str
+    latest_commit_message: str
+    doc_exists: bool
+    changed_files_count: int
+
+
+class GithubDocSyncRequest(BaseModel):
+    github_url: str
+    github_token: SecretStr
+    template_id: str
+    output_type: str = Field(default="technical", pattern="^(technical|functional)$")
+    branch: str | None = None
+    target_path: str = "README.md"
+    commit_message: str = Field(
+        default="docs: atualiza documentação via AutoDoc",
+        max_length=500,
+    )
+
+
+class GithubDocSyncResponse(BaseModel):
+    action: str
+    reason: str
+    needs_update: bool
+    doc: DocumentationRecordResponse | None = None
+    commit: CommitGithubReadmeResponse | None = None

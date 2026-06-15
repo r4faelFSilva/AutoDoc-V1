@@ -10,6 +10,10 @@ from app.schemas.documentation import (
     DocumentationRecordResponse,
     GenerateGithubRequest,
     GenerateRequest,
+    GithubDocEvaluateRequest,
+    GithubDocEvaluateResponse,
+    GithubDocSyncRequest,
+    GithubDocSyncResponse,
     SearchResultResponse,
     UpdateDocumentationRequest,
 )
@@ -64,6 +68,34 @@ def commit_github_readme(
         )
         return CommitGithubReadmeResponse(**result)
     except GitHubCommitError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+
+
+@router.post("/generate/github/evaluate", response_model=GithubDocEvaluateResponse)
+def evaluate_github_doc(
+    body: GithubDocEvaluateRequest,
+    _user: CurrentUser,
+) -> GithubDocEvaluateResponse:
+    try:
+        return documentation_service.evaluate_github_documentation(
+            github_url=body.github_url,
+            github_token=body.github_token.get_secret_value(),
+            branch=body.branch,
+            target_path=body.target_path,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+
+
+@router.post("/generate/github/sync", response_model=GithubDocSyncResponse)
+def sync_github_doc(
+    body: GithubDocSyncRequest,
+    user: CurrentUser,
+    db: Session = Depends(get_db),
+) -> GithubDocSyncResponse:
+    try:
+        return documentation_service.sync_github_documentation(db, user_id=user.id, body=body)
+    except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 
 

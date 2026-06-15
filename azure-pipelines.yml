@@ -1,0 +1,130 @@
+trigger: none  # evita disparo automático; use manual na demo
+
+pool:
+  name: Default  # pool com agente self-hosted
+
+variables:
+  - group: autodoc-local
+
+steps:
+  - task: PowerShell@2
+    displayName: Health check API local
+    inputs:
+      targetType: inline
+      script: |
+        $r = Invoke-RestMethod -Uri "$(AUTODOC_API_URL)/health" -Method Get
+        if ($r.status -ne "ok") { throw "API nao respondeu ok" }
+        Write-Host "API OK"
+
+  - task: PowerShell@2
+    displayName: Login AutoDoc
+    inputs:
+      targetType: inline
+      script: |
+        $body = @{ email = "$(AUTODOC_EMAIL)"; password = "$(AUTODOC_PASSWORD)" } | ConvertTo-Json
+        $login = Invoke-RestMethod -Uri "$(AUTODOC_API_URL)/api/auth/login" `
+          -Method Post -ContentType "application/json" -Body $body
+        Write-Host "##vso[task.setvariable variable=AUTODOC_TOKEN;issecret=true]$($login.access_token)"
+
+  - task: PowerShell@2
+    displayName: Avaliar se documentacao precisa ser atualizada
+    inputs:
+      targetType: inline
+      script: |
+        $headers = @{ Authorization = "Bearer $(AUTODOC_TOKEN)" }
+        $targetPath = "$(AUTODOC_COMMIT_PATH)"
+        if ([string]::IsNullOrWhiteSpace($targetPath)) { $targetPath = "README.md" }
+        $body = @{
+          github_url   = "$(AUTODOC_GITHUB_URL)"
+          github_token = "$(AUTODOC_GITHUB_TOKEN)"
+          target_path  = $targetPath
+        }
+        $branch = "$(AUTODOC_BRANCH)"
+        if (-not [string]::IsNullOrWhiteSpace($branch)) { $body.branch = $branch }
+        $eval = Invoke-RestMethod -Uri "$(AUTODOC_API_URL)/api/generate/github/evaluate" `
+          -Method Post -ContentType "application/json" -Headers $headers `
+          -Body ($body | ConvertTo-Json)
+        Write-Host "Commit analisado: $($eval.latest_commit_sha) — $($eval.latest_commit_message)"
+        Write-Host "Arquivos alterados: $($eval.changed_files_count) | Doc existe: $($eval.doc_exists)"
+        Write-Host "Decisao: needs_update=$($eval.needs_update) | confidence=$($eval.confidence)"
+        Write-Host "Motivo: $($eval.reason)"
+        $flag = if ($eval.needs_update) { "true" } else { "false" }
+        Write-Host "##vso[task.setvariable variable=NEEDS_UPDATE]$flag"
+
+  - task: PowerShell@2
+    displayName: Gerar documentacao via GitHub
+    condition: eq(variables['NEEDS_UPDATE'], 'true')
+    inputs:
+      targetType: inline
+      script: |
+        $headers = @{ Authorization = "Bearer $(AUTODOC_TOKEN)" }
+        $body = @{
+          github_url  = "$(AUTODOC_GITHUB_URL)"
+          template_id = "$(AUTODOC_TEMPLATE_ID)"
+          output_type = "technical"
+        }
+        $branch = "$(AUTODOC_BRANCH)"
+        if (-not [string]::IsNullOrWhiteSpace($branch)) { $body.branch = $branch }
+        $doc = Invoke-RestMethod -Uri "$(AUTODOC_API_URL)/api/generate/github" `
+          -Method Post -ContentType "application/json" -Headers $headers `
+          -Body ($body | ConvertTo-Json)
+        if ($doc.status -ne "completed") { throw "Geracao falhou: status=$($doc.status)" }
+        Write-Host "Documento gerado: id=$($doc.id)"
+        New-Item -ItemType Directory -Force -Path "$(Build.ArtifactStagingDirectory)" | Out-Null
+        $outFile = Join-Path "$(Build.ArtifactStagingDirectory)" "doc-gerada.md"
+        $doc.content | Out-File -Encoding utf8 $outFile
+        Write-Host "##vso[task.setvariable variable=DOC_FILE]$outFile"
+        Write-Host "##vso[task.setvariable variable=DOC_ID]$($doc.id)"
+
+  - task: PowerShell@2
+    displayName: Commit documentacao no GitHub
+    condition: eq(variables['NEEDS_UPDATE'], 'true')
+    inputs:
+      targetType: inline
+      script: |
+        $headers = @{ Authorization = "Bearer $(AUTODOC_TOKEN)" }
+        $targetPath = "$(AUTODOC_COMMIT_PATH)"
+        if ([string]::IsNullOrWhiteSpace($targetPath)) { $targetPath = "README.md" }
+        $commitMsg = "$(AUTODOC_COMMIT_MESSAGE)"
+        if ([string]::IsNullOrWhiteSpace($commitMsg)) {
+          $commitMsg = "docs: atualiza documentacao via AutoDoc CI"
+        }
+        $content = Get-Content -Path "$(DOC_FILE)" -Raw -Encoding utf8
+        $body = @{
+          github_url     = "$(AUTODOC_GITHUB_URL)"
+          content        = $content
+          github_token   = "$(AUTODOC_GITHUB_TOKEN)"
+          target_path    = $targetPath
+          commit_message = $commitMsg
+        }
+        $branch = "$(AUTODOC_BRANCH)"
+        if (-not [string]::IsNullOrWhiteSpace($branch)) { $body.branch = $branch }
+        try {
+          $commit = Invoke-RestMethod -Uri "$(AUTODOC_API_URL)/api/generate/github/commit" `
+            -Method Post -ContentType "application/json" -Headers $headers `
+            -Body ($body | ConvertTo-Json)
+          Write-Host "Commit publicado: $($commit.commit_url)"
+          Write-Host "Arquivo: $($commit.target_path) | Branch: $($commit.branch)"
+        } catch {
+          $detail = $_.ErrorDetails.Message
+          if ($detail -match "identico ao arquivo remoto") {
+            Write-Host "Commit ignorado: conteudo identico ao remoto."
+          } else {
+            throw
+          }
+        }
+
+  - task: PowerShell@2
+    displayName: Documentacao ja esta atualizada
+    condition: ne(variables['NEEDS_UPDATE'], 'true')
+    inputs:
+      targetType: inline
+      script: |
+        Write-Host "Nenhuma geracao ou commit necessario nesta execucao."
+
+  - task: PublishBuildArtifacts@1
+    displayName: Publicar Markdown gerado
+    condition: eq(variables['NEEDS_UPDATE'], 'true')
+    inputs:
+      PathtoPublish: $(Build.ArtifactStagingDirectory)
+      ArtifactName: autodoc-output

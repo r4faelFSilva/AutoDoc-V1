@@ -8,14 +8,22 @@ from sqlalchemy.orm import Session
 from app.models.documentation_record import DocumentationRecord
 from app.models.template import Template
 from app.schemas.documentation import (
+    CommitGithubReadmeResponse,
     DashboardStatsResponse,
     DocumentationRecordResponse,
     GenerateGithubRequest,
     GenerateRequest,
+    GithubDocEvaluateRequest,
+    GithubDocEvaluateResponse,
+    GithubDocSyncRequest,
+    GithubDocSyncResponse,
     SearchResultResponse,
 )
 from app.services import ai_openai, template_service
+from app.services.documentation_evaluator import DocumentationEvaluatorError, evaluate_documentation_update
 from app.services.github_archive import GitHubArchiveError, fetch_repo_text_bundle, parse_github_url
+from app.services.github_changes import fetch_commit_analysis_context
+from app.services.github_commit import GitHubCommitError, commit_markdown_file
 
 
 def _to_doc_response(r: DocumentationRecord) -> DocumentationRecordResponse:
@@ -141,6 +149,95 @@ def generate_from_github(db: Session, *, user_id: int, body: GenerateGithubReque
     db.commit()
     db.refresh(rec)
     return _to_doc_response(rec)
+
+
+def evaluate_github_documentation(
+    *,
+    github_url: str,
+    github_token: str,
+    branch: str | None = None,
+    target_path: str = "README.md",
+) -> GithubDocEvaluateResponse:
+    try:
+        ctx = fetch_commit_analysis_context(
+            github_url=github_url,
+            github_token=github_token,
+            branch=branch,
+            target_path=target_path,
+        )
+        result = evaluate_documentation_update(ctx)
+    except GitHubCommitError as e:
+        raise ValueError(str(e)) from e
+    except DocumentationEvaluatorError as e:
+        raise ValueError(str(e)) from e
+    return GithubDocEvaluateResponse(**result)
+
+
+def sync_github_documentation(
+    db: Session,
+    *,
+    user_id: int,
+    body: GithubDocSyncRequest,
+) -> GithubDocSyncResponse:
+    token = body.github_token.get_secret_value()
+    evaluation = evaluate_github_documentation(
+        github_url=body.github_url,
+        github_token=token,
+        branch=body.branch,
+        target_path=body.target_path,
+    )
+    if not evaluation.needs_update:
+        return GithubDocSyncResponse(
+            action="skipped",
+            reason=evaluation.reason,
+            needs_update=False,
+            doc=None,
+            commit=None,
+        )
+
+    gen_body = GenerateGithubRequest(
+        github_url=body.github_url,
+        template_id=body.template_id,
+        output_type=body.output_type,
+        branch=body.branch,
+    )
+    doc = generate_from_github(db, user_id=user_id, body=gen_body)
+    if doc.status != "completed":
+        return GithubDocSyncResponse(
+            action="failed",
+            reason="A geração falhou; commit não realizado.",
+            needs_update=True,
+            doc=doc,
+            commit=None,
+        )
+
+    try:
+        commit_result = commit_markdown_file(
+            github_url=body.github_url,
+            content=doc.content,
+            github_token=token,
+            branch=body.branch,
+            target_path=body.target_path,
+            commit_message=body.commit_message,
+        )
+    except GitHubCommitError as e:
+        if str(e).startswith("SKIP_UNCHANGED:"):
+            return GithubDocSyncResponse(
+                action="skipped",
+                reason=str(e).replace("SKIP_UNCHANGED: ", ""),
+                needs_update=True,
+                doc=doc,
+                commit=None,
+            )
+        raise ValueError(str(e)) from e
+
+    return GithubDocSyncResponse(
+        action="committed",
+        reason=evaluation.reason,
+        needs_update=True,
+        doc=doc,
+        commit=CommitGithubReadmeResponse(**commit_result),
+    )
 
 
 def list_history(db: Session, *, user_id: int) -> list[DocumentationRecordResponse]:
