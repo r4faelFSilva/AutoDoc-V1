@@ -27,6 +27,10 @@ export const routes: Routes = [
         loadComponent: () => import('./features/generate/generate.component').then(m => m.GenerateComponent),
       },
       {
+        path: 'architect',
+        loadComponent: () => import('./features/architect/architect.component').then(m => m.ArchitectComponent),
+      },
+      {
         path: 'templates',
         loadComponent: () => import('./features/templates/templates.component').then(m => m.TemplatesComponent),
       },

@@ -102,10 +102,16 @@ def _fetch_default_branch(client: httpx.Client, owner: str, repo: str) -> str:
     return str(data.get("default_branch") or "main")
 
 
-def fetch_repo_text_bundle(*, owner: str, repo: str, branch: str | None) -> tuple[str, list[tuple[str, str]], list[str]]:
-    """
-    Returns (resolved_ref, list of (relpath, content), warnings).
-    """
+def fetch_repo_files(
+    *,
+    owner: str,
+    repo: str,
+    branch: str | None,
+    max_files: int = MAX_FILES,
+    max_total_chars: int = MAX_TOTAL_CHARS,
+    max_file_chars: int = MAX_FILE_CHARS,
+) -> tuple[str, list[tuple[str, str]], list[str]]:
+    """Baixa o tarball e retorna (ref_resolvido, [(caminho, conteúdo)], avisos)."""
     warnings: list[str] = []
     with httpx.Client(follow_redirects=True, timeout=120.0) as client:
         ref = branch or _fetch_default_branch(client, owner, repo)
@@ -159,25 +165,31 @@ def fetch_repo_text_bundle(*, owner: str, repo: str, branch: str | None) -> tupl
 
         total_chars = 0
         for p in candidates:
-            if len(files) >= MAX_FILES:
-                warnings.append(f"Limite de {MAX_FILES} arquivos atingido; demais foram omitidos.")
+            if len(files) >= max_files:
+                warnings.append(f"Limite de {max_files} arquivos atingido; demais foram omitidos.")
                 break
             try:
                 raw = p.read_text(encoding="utf-8", errors="replace")
             except OSError:
                 continue
             rel = p.relative_to(extract_root).as_posix()
-            if len(raw) > MAX_FILE_CHARS:
-                raw = raw[:MAX_FILE_CHARS] + "\n\n…(truncado)\n"
+            if len(raw) > max_file_chars:
+                raw = raw[:max_file_chars] + "\n\n…(truncado)\n"
                 warnings.append(f"Arquivo truncado: {rel}")
-            if total_chars + len(raw) > MAX_TOTAL_CHARS:
-                warnings.append(f"Limite total de {MAX_TOTAL_CHARS} caracteres atingido.")
+            if total_chars + len(raw) > max_total_chars:
+                warnings.append(f"Limite total de {max_total_chars} caracteres atingido.")
                 break
             total_chars += len(raw)
             files.append((rel, raw))
 
     if not files:
         raise GitHubArchiveError("Nenhum arquivo de código reconhecido encontrado no repositório.")
+    return ref, files, warnings
+
+
+def fetch_repo_text_bundle(*, owner: str, repo: str, branch: str | None) -> tuple[str, str, list[str]]:
+    """Retorna (ref_resolvido, bundle_texto, avisos) — formato do modo quick."""
+    ref, files, warnings = fetch_repo_files(owner=owner, repo=repo, branch=branch)
 
     tree_lines = [fp for fp, _ in files[:200]]
     bundle = "\n\n".join(

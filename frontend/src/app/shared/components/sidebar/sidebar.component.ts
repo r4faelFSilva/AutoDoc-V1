@@ -33,6 +33,7 @@ export class SidebarComponent implements OnDestroy {
   navItems: NavItem[] = [
     { path: '/dashboard', label: 'Dashboard', icon: 'grid_view' },
     { path: '/generate', label: 'Gerar Doc', icon: 'auto_awesome' },
+    { path: '/architect', label: 'Arquitetura', icon: 'account_tree' },
     { path: '/history', label: 'Histórico', icon: 'history' },
     { path: '/templates', label: 'Templates', icon: 'description' },
   ];

@@ -5,9 +5,11 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MarkdownModule } from 'ngx-markdown';
 import { DocumentationService } from '../../core/services/documentation.service';
+import { AgentRunsService } from '../../core/services/agent-runs.service';
 import { PdfExportService } from '../../core/services/pdf-export.service';
 import { TemplateService } from '../../core/services/template.service';
 import { DocumentationRecord } from '../../core/models/documentation.model';
+import { AgentRun, DocumentadorInput } from '../../core/models/agent-run.model';
 import { Template } from '../../core/models/template.model';
 import { SkeletonComponent } from '../../shared/components/skeleton/skeleton.component';
 
@@ -24,6 +26,7 @@ export class GenerateComponent implements OnInit {
   form: FormGroup;
   templates = signal<Template[]>([]);
   loading = signal(false);
+  progressMessage = signal('');
   result = signal<DocumentationRecord | null>(null);
   inputMode = signal<'paste' | 'upload' | 'github'>('paste');
   uploadedFilename = signal<string | null>(null);
@@ -44,6 +47,7 @@ export class GenerateComponent implements OnInit {
   constructor(
     private fb: FormBuilder,
     private docService: DocumentationService,
+    private runsService: AgentRunsService,
     private templateService: TemplateService,
     private snackBar: MatSnackBar,
     private pdfExport: PdfExportService,
@@ -54,6 +58,8 @@ export class GenerateComponent implements OnInit {
       branch: [''],
       template_id: ['', Validators.required],
       output_type: ['technical', Validators.required],
+      // Análise profunda é opt-in — múltiplas chamadas de IA por documento
+      deep: [false],
     });
   }
 
@@ -112,50 +118,118 @@ export class GenerateComponent implements OnInit {
 
     this.loading.set(true);
     this.result.set(null);
+    this.progressMessage.set('Enviando para o agente documentador…');
 
     const mode = this.inputMode();
-    const req =
+    const depth = this.form.get('deep')?.value ? 'deep' : 'quick';
+    const input: DocumentadorInput =
       mode === 'github'
-        ? this.docService.generateFromGithub({
+        ? {
+            source: 'github',
             github_url: (this.form.get('github_url')?.value as string).trim(),
-            template_id: this.form.get('template_id')?.value,
+            template_id: Number(this.form.get('template_id')?.value),
             output_type: this.form.get('output_type')?.value,
+            depth,
             branch: (this.form.get('branch')?.value as string)?.trim() || undefined,
-          })
-        : this.docService.generate({
+          }
+        : {
+            source: mode,
             code: this.form.get('code')?.value,
-            template_id: this.form.get('template_id')?.value,
+            template_id: Number(this.form.get('template_id')?.value),
             output_type: this.form.get('output_type')?.value,
+            depth,
             filename: this.uploadedFilename() || 'código-colado.txt',
-          });
+          };
 
-    req.subscribe({
+    this.runsService.createRun('documentador', input as unknown as Record<string, unknown>).subscribe({
+      next: run => this.watchRun(run.id),
+      error: (err: unknown) => this.failGeneration(err),
+    });
+  }
+
+  private watchRun(runId: number): void {
+    this.runsService.streamEvents(runId).subscribe({
+      next: event => {
+        this.progressMessage.set(event.message);
+        if (event.kind === 'completed') {
+          const docId = event.data?.['doc_id'];
+          this.loadGeneratedDoc(String(docId));
+        } else if (event.kind === 'failed') {
+          this.loading.set(false);
+          this.snackBar.open(event.message || 'Erro ao gerar documentação.', 'Fechar', {
+            duration: 5000,
+            panelClass: ['snack-error'],
+          });
+        }
+      },
+      // Stream caiu (proxy, rede)? Degrada para polling — o run segue no backend.
+      error: () => this.pollRun(runId),
+    });
+  }
+
+  private pollRun(runId: number, attempt = 0): void {
+    const maxAttempts = 150; // ~5 min a cada 2s
+    this.runsService.getRun(runId).subscribe({
+      next: (run: AgentRun) => {
+        if (run.status === 'completed') {
+          this.loadGeneratedDoc(String(run.output?.['doc_id']));
+        } else if (run.status === 'failed' || run.status === 'cancelled') {
+          this.loading.set(false);
+          this.snackBar.open(run.error || 'Erro ao gerar documentação.', 'Fechar', {
+            duration: 5000,
+            panelClass: ['snack-error'],
+          });
+        } else if (attempt < maxAttempts) {
+          setTimeout(() => this.pollRun(runId, attempt + 1), 2000);
+        } else {
+          this.loading.set(false);
+          this.snackBar.open('Tempo esgotado aguardando a geração.', 'Fechar', {
+            duration: 5000,
+            panelClass: ['snack-error'],
+          });
+        }
+      },
+      error: (err: unknown) => this.failGeneration(err),
+    });
+  }
+
+  private loadGeneratedDoc(docId: string): void {
+    this.docService.getById(docId).subscribe({
       next: doc => {
+        this.loading.set(false);
+        if (!doc) {
+          this.snackBar.open('Documento gerado, mas não encontrado no histórico.', 'Fechar', {
+            duration: 5000,
+            panelClass: ['snack-error'],
+          });
+          return;
+        }
         this.result.set(doc);
         this.editedContent.set(doc.content);
         this.editMode.set(false);
-        this.loading.set(false);
         this.snackBar.open('Documentação gerada com sucesso!', '', {
           duration: 3000,
           panelClass: ['snack-success'],
         });
       },
-      error: (err: unknown) => {
-        this.loading.set(false);
-        let msg = 'Erro ao gerar documentação.';
-        if (err instanceof HttpErrorResponse) {
-          const d = err.error?.detail;
-          if (typeof d === 'string') {
-            msg = d;
-          } else if (Array.isArray(d)) {
-            msg = d.map((x: { msg?: string }) => x.msg).filter(Boolean).join(' ') || msg;
-          }
-        }
-        this.snackBar.open(msg, 'Fechar', {
-          duration: 5000,
-          panelClass: ['snack-error'],
-        });
-      },
+      error: (err: unknown) => this.failGeneration(err),
+    });
+  }
+
+  private failGeneration(err: unknown): void {
+    this.loading.set(false);
+    let msg = 'Erro ao gerar documentação.';
+    if (err instanceof HttpErrorResponse) {
+      const d = err.error?.detail;
+      if (typeof d === 'string') {
+        msg = d;
+      } else if (Array.isArray(d)) {
+        msg = d.map((x: { msg?: string }) => x.msg).filter(Boolean).join(' ') || msg;
+      }
+    }
+    this.snackBar.open(msg, 'Fechar', {
+      duration: 5000,
+      panelClass: ['snack-error'],
     });
   }
 

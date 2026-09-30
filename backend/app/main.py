@@ -3,9 +3,10 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routers import auth, documentation, templates
+import app.agents  # noqa: F401 — registra os agentes no registry
+from app.api.routers import auth, documentation, runs, templates
 from app.database import Base, SessionLocal, engine
-from app.models import documentation_record, template, user  # noqa: F401
+from app.models import agent_run, documentation_record, project, template, user  # noqa: F401
 from app.services.seed import run_seed
 
 
@@ -39,6 +40,7 @@ app.add_middleware(
 app.include_router(auth.router, prefix="/api")
 app.include_router(templates.router, prefix="/api")
 app.include_router(documentation.router, prefix="/api")
+app.include_router(runs.router, prefix="/api")
 
 
 @app.get("/health")

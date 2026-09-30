@@ -1,0 +1,67 @@
+# AutoDoc 2.0 — modo Compose: Postgres + pgvector, Redis, API e worker.
+#
+#   docker compose -f infra/docker-compose.yml up --build
+#
+# Requer Docker Desktop. Sem ele, o backend roda em modo fallback
+# (SQLite + jobs in-process): basta deixar REDIS_URL/DATABASE_URL vazios.
+# Frontend continua com `ng serve` local (proxy para localhost:8000).
+
+name: autodoc
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: autodoc
+      POSTGRES_PASSWORD: autodoc
+      POSTGRES_DB: autodoc
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U autodoc"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: ../backend
+    environment: &backend-env
+      DATABASE_URL: postgresql+psycopg://autodoc:autodoc@db:5432/autodoc
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      LLM_PROVIDER: ${LLM_PROVIDER:-openai}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    build: ../backend
+    command: ["arq", "app.jobs.worker.WorkerSettings"]
+    environment: *backend-env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  pgdata:

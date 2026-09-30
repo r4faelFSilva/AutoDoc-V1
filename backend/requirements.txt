@@ -7,3 +7,18 @@ bcrypt>=4.2.0
 httpx>=0.27.0
 openai>=1.55.0
 email-validator>=2.2.0
+
+# --- Fundação de agentes (Fase 0) ---
+anthropic>=0.40.0
+langgraph>=0.2.60
+arq>=0.26.0
+redis>=5.0.0
+alembic>=1.14.0
+# Postgres (modo Compose); no fallback local o SQLite continua funcionando
+psycopg[binary]>=3.2.0
+# SDK do Model Context Protocol (mcp-server/server.py)
+mcp>=1.2.0
+# Upload e extração de documentos de especificação (agente arquiteto)
+python-multipart>=0.0.9
+python-docx>=1.1.0
+pypdf>=4.0.0

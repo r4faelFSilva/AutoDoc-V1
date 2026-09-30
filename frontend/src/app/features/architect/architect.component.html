@@ -1,0 +1,309 @@
+<div class="architect-page">
+  <div class="page-header">
+    <h1>Arquitetura</h1>
+    <p>Monte e estude arquiteturas no canvas — e, quando quiser, deixe o agente propor e criticar.</p>
+  </div>
+
+  <!-- barra principal: paleta + IA -->
+  <div class="toolbar">
+    <div class="palette">
+      <span class="palette-label">Adicionar:</span>
+      <button
+        *ngFor="let t of nodeTypes"
+        class="palette-btn"
+        [style.borderColor]="nodeStyle(t).color"
+        (click)="addNode(t)"
+        [title]="nodeStyle(t).label"
+      >
+        <span class="material-symbols-outlined" [style.color]="nodeStyle(t).color">{{ nodeStyle(t).icon }}</span>
+      </button>
+      <span class="palette-sep"></span>
+      <button class="btn-ghost" (click)="loadSample()">
+        <span class="material-symbols-outlined">school</span> Exemplo
+      </button>
+      <button class="btn-ghost" (click)="clearCanvas()" [disabled]="nodes().length === 0">
+        <span class="material-symbols-outlined">mop</span> Limpar
+      </button>
+    </div>
+    <div class="toolbar-actions">
+      <button class="btn-primary slim" (click)="aiPanelOpen.set(!aiPanelOpen())">
+        <span class="material-symbols-outlined">smart_toy</span>
+        {{ aiPanelOpen() ? 'Fechar IA' : 'Gerar com IA' }}
+      </button>
+    </div>
+  </div>
+
+  <!-- painel de IA (opcional) -->
+  <div class="input-panel" *ngIf="aiPanelOpen()">
+    <div class="mode-tabs">
+      <button class="mode-tab" [class.active]="inputMode() === 'spec'" (click)="inputMode.set('spec')">
+        <span class="material-symbols-outlined">edit_note</span> Especificação
+      </button>
+      <button class="mode-tab" [class.active]="inputMode() === 'github'" (click)="inputMode.set('github')">
+        <span class="material-symbols-outlined">link</span> Repositório GitHub
+      </button>
+    </div>
+
+    <ng-container *ngIf="inputMode() === 'spec'">
+      <div class="spec-upload-row">
+        <label class="btn-ghost upload-btn">
+          <span class="material-symbols-outlined">upload_file</span>
+          {{ extracting() ? 'Extraindo…' : 'Carregar documento (.docx, .pdf, .md, .txt)' }}
+          <input type="file" accept=".txt,.md,.docx,.pdf" (change)="onSpecFileChange($event)" hidden />
+        </label>
+        <span class="spec-file-badge" *ngIf="specFilename()">
+          <span class="material-symbols-outlined">description</span> {{ specFilename() }}
+        </span>
+      </div>
+      <textarea
+        class="spec-textarea"
+        [ngModel]="spec()"
+        (ngModelChange)="spec.set($event)"
+        placeholder="Descreva a ideia — ou carregue um documento acima e revise o texto extraído aqui. Ex.: Sistema de pedidos para delivery com app mobile, pagamentos via PIX, notificações em tempo real…"
+      ></textarea>
+    </ng-container>
+
+    <ng-container *ngIf="inputMode() === 'github'">
+      <input
+        type="text"
+        class="text-input"
+        [ngModel]="githubUrl()"
+        (ngModelChange)="githubUrl.set($event)"
+        placeholder="https://github.com/dono/repositorio"
+        spellcheck="false"
+      />
+      <input
+        type="text"
+        class="text-input"
+        [ngModel]="branch()"
+        (ngModelChange)="branch.set($event)"
+        placeholder="branch (opcional)"
+        spellcheck="false"
+      />
+    </ng-container>
+
+    <div class="rps-row">
+      <label>RPS esperado (média)</label>
+      <input
+        type="number"
+        class="text-input rps-input"
+        [ngModel]="expectedRps()"
+        (ngModelChange)="expectedRps.set($event)"
+        min="1"
+      />
+      <button class="btn-primary" (click)="generate()" [disabled]="loading() || extracting()">
+        <span class="material-symbols-outlined">account_tree</span>
+        {{ loading() ? 'Analisando…' : 'Gerar arquitetura' }}
+      </button>
+    </div>
+  </div>
+
+  <div class="progress-banner" *ngIf="loading()">
+    <span class="spinner-sm"></span>
+    {{ progressMessage() }}
+  </div>
+
+  <!-- what-if + ações do resultado -->
+  <div class="toolbar" *ngIf="nodes().length > 0">
+    <div class="whatif">
+      <span class="material-symbols-outlined">speed</span>
+      <label>What-if:</label>
+      <input
+        type="range"
+        min="10"
+        [max]="whatIfRps() * 4 < 1000 ? 1000 : whatIfRps() * 4"
+        [value]="whatIfRps()"
+        (input)="onWhatIfInput($event)"
+      />
+      <strong>{{ whatIfRps() }} RPS</strong>
+    </div>
+    <div class="toolbar-actions">
+      <button class="btn-ghost" (click)="recritique()" [disabled]="loading()">
+        <span class="material-symbols-outlined">psychology</span> Criticar com IA
+      </button>
+      <button class="btn-ghost" *ngIf="output()" (click)="adrOpen.set(!adrOpen())">
+        <span class="material-symbols-outlined">article</span> ADR
+      </button>
+      <button class="btn-ghost" (click)="copyMermaid()">
+        <span class="material-symbols-outlined">schema</span> Mermaid
+      </button>
+      <button class="btn-ghost" *ngIf="output()" (click)="downloadAdr()">
+        <span class="material-symbols-outlined">download</span> ADR .md
+      </button>
+    </div>
+  </div>
+
+  <!-- workspace: canvas + painel — sempre presentes -->
+  <div class="workspace">
+    <div class="canvas-wrap">
+      <div class="canvas-empty" *ngIf="nodes().length === 0">
+        <span class="material-symbols-outlined">account_tree</span>
+        <p>Canvas vazio.</p>
+        <p class="hint">
+          Adicione componentes pela paleta acima, carregue o <strong>Exemplo</strong> para estudar,
+          ou use <strong>Gerar com IA</strong> a partir de uma especificação ou repositório.
+        </p>
+      </div>
+      <svg
+        #canvasSvg
+        *ngIf="nodes().length > 0"
+        viewBox="0 0 1200 720"
+        preserveAspectRatio="xMidYMid meet"
+        (pointermove)="onCanvasPointerMove($event)"
+        (pointerup)="onCanvasPointerUp()"
+        (pointerleave)="onCanvasPointerUp()"
+      >
+        <defs>
+          <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="#64748b" />
+          </marker>
+        </defs>
+
+        <path
+          *ngFor="let e of edges()"
+          [attr.d]="edgePath(e)"
+          class="edge"
+          [class.async]="!e.sync"
+          marker-end="url(#arrow)"
+        />
+
+        <g
+          *ngFor="let n of nodes()"
+          class="node"
+          [class.selected]="selectedNodeId() === n.id"
+          [attr.transform]="'translate(' + n.x + ',' + n.y + ')'"
+          (pointerdown)="onNodePointerDown($event, n)"
+        >
+          <rect
+            class="node-box"
+            width="172"
+            height="64"
+            rx="10"
+            [attr.stroke]="nodeStyle(n.type).color"
+            [class.status-bottleneck]="worstSeverity(n.id) === 'bottleneck'"
+            [class.status-high]="worstSeverity(n.id) === 'high'"
+            [class.status-medium]="worstSeverity(n.id) === 'medium'"
+          />
+          <circle cx="26" cy="32" r="15" [attr.fill]="nodeStyle(n.type).color" opacity="0.18" />
+          <text x="26" y="37" class="node-icon material-symbols-outlined" text-anchor="middle" [attr.fill]="nodeStyle(n.type).color">
+            {{ nodeStyle(n.type).icon }}
+          </text>
+          <text x="50" y="28" class="node-label">{{ n.label | slice: 0 : 18 }}</text>
+          <text x="50" y="45" class="node-tech">{{ n.tech | slice: 0 : 20 }}</text>
+          <text x="50" y="58" class="node-load" *ngIf="loadOf(n.id) !== null">
+            ~{{ loadOf(n.id) }} RPS
+            <tspan *ngIf="n.props.replicas"> · {{ n.props.replicas }}x</tspan>
+          </text>
+          <text x="160" y="18" class="node-badge" text-anchor="end" *ngIf="worstSeverity(n.id)">
+            {{ worstSeverity(n.id) === 'bottleneck' ? '🔥' : '⚠️' }}
+          </text>
+        </g>
+      </svg>
+    </div>
+
+    <aside class="side-panel">
+      <ng-container *ngIf="selectedNode() as node; else annList">
+        <h3>
+          <span class="material-symbols-outlined" [style.color]="nodeStyle(node.type).color">
+            {{ nodeStyle(node.type).icon }}
+          </span>
+          Editar componente
+        </h3>
+        <label class="field-label">Nome</label>
+        <input class="text-input" [value]="node.label" (input)="updateSelected('label', $any($event.target).value)" />
+        <label class="field-label">Tecnologia</label>
+        <input class="text-input" [value]="node.tech" (input)="updateSelected('tech', $any($event.target).value)" />
+        <label class="field-label">Tipo</label>
+        <select class="text-input" [value]="node.type" (change)="updateSelectedType($any($event.target).value)">
+          <option *ngFor="let t of nodeTypes" [value]="t">{{ nodeStyle(t).label }}</option>
+        </select>
+        <div class="prop-row">
+          <div>
+            <label class="field-label">Réplicas</label>
+            <input
+              type="number"
+              min="1"
+              class="text-input"
+              [value]="node.props.replicas ?? ''"
+              (input)="updateSelectedProp('replicas', $any($event.target).value)"
+            />
+          </div>
+          <div>
+            <label class="field-label">RPS / réplica</label>
+            <input
+              type="number"
+              min="1"
+              class="text-input"
+              [value]="node.props.rps_capacity ?? ''"
+              (input)="updateSelectedProp('rps_capacity', $any($event.target).value)"
+            />
+          </div>
+        </div>
+
+        <label class="field-label">Conectar a</label>
+        <div class="connect-row">
+          <select class="text-input" [ngModel]="connectTargetId()" (ngModelChange)="connectTargetId.set($event)">
+            <option value="">— escolha um componente —</option>
+            <option *ngFor="let n of otherNodes()" [value]="n.id">{{ n.label }}</option>
+          </select>
+          <button class="btn-ghost" (click)="connectSelected()" [disabled]="!connectTargetId()">
+            <span class="material-symbols-outlined">arrow_right_alt</span>
+          </button>
+        </div>
+
+        <div class="edge-list" *ngIf="outgoingEdges(node.id).length > 0">
+          <label class="field-label">Conexões de saída</label>
+          <div class="edge-item" *ngFor="let e of outgoingEdges(node.id)">
+            <span class="edge-target">→ {{ nodeLabel(e.to) }}</span>
+            <input
+              type="number"
+              step="0.1"
+              min="0"
+              class="text-input edge-weight"
+              title="Fração do tráfego (0–1; >1 = fan-out)"
+              [value]="e.weight"
+              (input)="updateEdgeWeight(e, $any($event.target).value)"
+            />
+            <button class="edge-sync" [class.async]="!e.sync" (click)="toggleEdgeSync(e)" [title]="e.sync ? 'Síncrona' : 'Assíncrona'">
+              {{ e.sync ? 'sync' : 'async' }}
+            </button>
+            <button class="btn-ghost danger slim-icon" (click)="removeEdge(e)">
+              <span class="material-symbols-outlined">close</span>
+            </button>
+          </div>
+        </div>
+
+        <p class="hint">A análise de carga recalcula na hora — sem custo de IA.</p>
+        <div class="node-issues" *ngIf="nodeAnnotations(node.id).length > 0">
+          <div class="ann" *ngFor="let a of nodeAnnotations(node.id)" [class]="'sev-' + a.severity">
+            <strong>{{ a.kind }}</strong> {{ a.message }}
+          </div>
+        </div>
+        <div class="panel-actions">
+          <button class="btn-ghost danger" (click)="removeSelected()">
+            <span class="material-symbols-outlined">delete</span> Remover
+          </button>
+          <button class="btn-ghost" (click)="selectedNodeId.set(null)">Fechar</button>
+        </div>
+      </ng-container>
+
+      <ng-template #annList>
+        <h3><span class="material-symbols-outlined">report</span> Achados ({{ allAnnotations().length }})</h3>
+        <p class="hint" *ngIf="nodes().length === 0">
+          O painel mostra gargalos e riscos assim que houver componentes no canvas.
+        </p>
+        <p class="hint" *ngIf="nodes().length > 0 && allAnnotations().length === 0">
+          Nenhum gargalo ou risco no cenário atual. Aumente o RPS no what-if para estressar o desenho.
+        </p>
+        <div class="ann" *ngFor="let a of allAnnotations()" [class]="'sev-' + a.severity">
+          <strong>{{ a.kind }}</strong> {{ a.message }}
+        </div>
+      </ng-template>
+    </aside>
+  </div>
+
+  <!-- ADR -->
+  <div class="adr-panel" *ngIf="adrOpen() && output()">
+    <markdown [data]="output()!.adr_markdown"></markdown>
+  </div>
+</div>

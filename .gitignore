@@ -1,0 +1,25 @@
+# Segredos — nunca versionar (.env.example é o modelo versionado)
+.env
+backend/.env
+
+# Runtime / dados locais
+backend/data/*.db
+*.sqlite3
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+
+# Frontend / IDE
+node_modules/
+dist/
+.angular/
+.idea/
+.vscode/settings.json
+
+# Documentos-fonte do TCC (grandes/pessoais — versione manualmente se quiser)
+TCC_AutoDoc_Final.docx
+_tcc_extract.txt
