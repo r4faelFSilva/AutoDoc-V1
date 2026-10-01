@@ -1,14 +1,13 @@
 """Execução isolada dos testes gerados.
 
-Três modos, escolhidos automaticamente:
+Três modos, escolhidos explicitamente por TESTGEN_EXECUTION:
 
-- docker:  container efêmero, sem rede, com limites de CPU/memória — o modo
-           alvo do plano. Usado quando o Docker está disponível.
-- local:   subprocess com timeout e ambiente mínimo. OPT-IN via
-           ALLOW_LOCAL_TEST_EXECUTION=true — só para máquina de dev rodando
-           código de confiança do próprio usuário.
-- none:    sem execução. Os testes são gerados e validados sintaticamente,
-           com aviso claro de que não foram executados.
+- none:    (padrão) sem execução. Os testes são gerados e validados
+           sintaticamente, com aviso claro de que não foram executados.
+- docker:  container efêmero, sem rede, com limites de CPU/memória. Se o
+           Docker não responder, os testes não são executados.
+- local:   subprocess com timeout e ambiente mínimo — só para máquina de dev
+           rodando código de confiança do próprio usuário.
 
 Os testes gerados usam unittest (stdlib), então nenhum modo precisa
 instalar dependências.
@@ -53,11 +52,7 @@ def _docker_available() -> bool:
 
 
 def resolve_mode() -> str:
-    if _docker_available():
-        return "docker"
-    if settings.allow_local_test_execution:
-        return "local"
-    return "none"
+    return settings.testgen_execution
 
 
 def run_unittests(files: dict[str, str]) -> ExecutionResult:
@@ -68,10 +63,14 @@ def run_unittests(files: dict[str, str]) -> ExecutionResult:
             mode="none",
             executed=False,
             passed=False,
-            output=(
-                "Execução desabilitada: Docker indisponível e "
-                "ALLOW_LOCAL_TEST_EXECUTION não está ativo."
-            ),
+            output="execução desabilitada: TESTGEN_EXECUTION=none",
+        )
+    if mode == "docker" and not _docker_available():
+        return ExecutionResult(
+            mode="docker",
+            executed=False,
+            passed=False,
+            output="TESTGEN_EXECUTION=docker, mas o Docker não está disponível",
         )
 
     with tempfile.TemporaryDirectory(prefix="autodoc-testgen-") as tmp:

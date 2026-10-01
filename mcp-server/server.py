@@ -6,13 +6,15 @@ runs com modo profundo opt-in.
 
 Transportes:
     python server.py            → stdio (Cursor, Claude Code, VS Code local)
-    python server.py sse        → SSE em http://localhost:8765 (hospedado)
+    python server.py sse        → SSE em http://127.0.0.1:8765 (hospedado)
 
 Variáveis de ambiente:
     AUTODOC_API_URL   (padrão: http://localhost:8000)
-    AUTODOC_EMAIL     (padrão: demo@autodoc.dev)
-    AUTODOC_PASSWORD  (padrão: demo)
+    AUTODOC_EMAIL     obrigatória — conta do AutoDoc usada pelo MCP
+    AUTODOC_PASSWORD  obrigatória
     AUTODOC_TIMEOUT   segundos de espera por geração (padrão: 300)
+    AUTODOC_MCP_HOST  interface do modo SSE (padrão: 127.0.0.1)
+    AUTODOC_MCP_PORT  porta do modo SSE (padrão: 8765)
 """
 
 from __future__ import annotations
@@ -26,8 +28,8 @@ import httpx
 from mcp.server import MCPServer
 
 API_URL = os.environ.get("AUTODOC_API_URL", "http://localhost:8000").rstrip("/")
-EMAIL = os.environ.get("AUTODOC_EMAIL", "demo@autodoc.dev")
-PASSWORD = os.environ.get("AUTODOC_PASSWORD", "demo")
+EMAIL = os.environ.get("AUTODOC_EMAIL", "").strip()
+PASSWORD = os.environ.get("AUTODOC_PASSWORD", "")
 TIMEOUT_SECONDS = float(os.environ.get("AUTODOC_TIMEOUT", "300"))
 
 mcp = MCPServer(
@@ -234,8 +236,14 @@ def get_run_status(run_id: int) -> str:
 
 
 if __name__ == "__main__":
+    if not EMAIL or not PASSWORD:
+        sys.exit("Configure AUTODOC_EMAIL e AUTODOC_PASSWORD com uma conta do AutoDoc.")
     transport = sys.argv[1] if len(sys.argv) > 1 else "stdio"
     if transport == "sse":
-        mcp.run(transport="sse", port=int(os.environ.get("AUTODOC_MCP_PORT", "8765")))
+        mcp.run(
+            transport="sse",
+            host=os.environ.get("AUTODOC_MCP_HOST", "127.0.0.1"),
+            port=int(os.environ.get("AUTODOC_MCP_PORT", "8765")),
+        )
     else:
         mcp.run()

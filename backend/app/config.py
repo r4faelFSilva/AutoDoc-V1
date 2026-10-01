@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -30,11 +31,12 @@ class Settings(BaseSettings):
     agent_max_output_tokens: int = 8_000
     agent_timeout_seconds: float = 600.0
 
-    # Execução de testes gerados SEM Docker (subprocess local com timeout).
-    # Padrão False: sem Docker e sem este opt-in, o agente gera e valida a
-    # sintaxe dos testes, mas não os executa. Ligue apenas em máquina de dev,
-    # para código de sua confiança.
-    allow_local_test_execution: bool = False
+    # Execução dos testes gerados pelo agente gerador_testes:
+    #   none   (padrão) — gera e valida a sintaxe, mas NÃO executa;
+    #   docker — container efêmero sem rede (requer acesso ao daemon Docker);
+    #   local  — subprocess local com timeout; só em máquina de dev, para
+    #            código de sua confiança.
+    testgen_execution: Literal["none", "docker", "local"] = "none"
 
     github_token: str = ""
 

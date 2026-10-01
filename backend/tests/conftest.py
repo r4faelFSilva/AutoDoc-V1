@@ -13,7 +13,7 @@ os.environ["DATABASE_URL"] = f"sqlite:///{_TEST_DB.as_posix()}"
 os.environ["REDIS_URL"] = ""  # força modo fallback (jobs in-process)
 os.environ["OPENAI_API_KEY"] = "test-key-nao-usada"
 # permite ao gerador de testes executar unittest local (conteúdo controlado pelos testes)
-os.environ["ALLOW_LOCAL_TEST_EXECUTION"] = "true"
+os.environ["TESTGEN_EXECUTION"] = "local"
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402

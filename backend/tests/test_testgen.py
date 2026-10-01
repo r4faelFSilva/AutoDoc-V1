@@ -118,11 +118,11 @@ def test_reparo_apos_falha(client, auth_headers, monkeypatch):
 
 def test_sem_sandbox_vira_not_executed(client, auth_headers, monkeypatch):
     import app.core.llm as llm
-    from app.agents.testgen import sandbox
+    from app.config import settings
 
     provider = FakeTestgenProvider(first_test=GOOD_TEST)
     monkeypatch.setattr(llm, "get_provider", lambda: provider)
-    monkeypatch.setattr(sandbox, "resolve_mode", lambda: "none")
+    monkeypatch.setattr(settings, "testgen_execution", "none")
 
     run = _run(
         client,
@@ -132,7 +132,10 @@ def test_sem_sandbox_vira_not_executed(client, auth_headers, monkeypatch):
     assert run["status"] == "completed", run
     out = run["output"]
     assert out["status"] == "not_executed"
+    assert out["execution_mode"] == "none"
     assert "NÃO executados" in out["summary"]
+    assert "TESTGEN_EXECUTION=none" in out["summary"]
+    assert provider.calls == ["generate"]  # sem execução, sem reparo
 
 
 def test_github_sem_target_path_rejeitado(client, auth_headers):
