@@ -1,4 +1,4 @@
-import { Component, signal } from '@angular/core';
+import { Component, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormBuilder, FormGroup, Validators, ReactiveFormsModule } from '@angular/forms';
 import { Router, RouterModule } from '@angular/router';
@@ -13,10 +13,11 @@ import { ParticleBackgroundComponent } from '../../../shared/components/particle
   templateUrl: './login.component.html',
   styleUrls: ['./login.component.scss'],
 })
-export class LoginComponent {
+export class LoginComponent implements OnInit {
   form: FormGroup;
   loading = signal(false);
   showPassword = signal(false);
+  allowRegistration = signal(false);
 
   constructor(
     private fb: FormBuilder,
@@ -25,8 +26,15 @@ export class LoginComponent {
     private snackBar: MatSnackBar,
   ) {
     this.form = this.fb.group({
-      email: ['demo@autodoc.dev', [Validators.required, Validators.email]],
-      password: ['demo', Validators.required],
+      email: ['', [Validators.required, Validators.email]],
+      password: ['', Validators.required],
+    });
+  }
+
+  ngOnInit(): void {
+    // Sem resposta do servidor, o link de cadastro continua oculto.
+    this.auth.getConfig().subscribe({
+      next: config => this.allowRegistration.set(config.allow_registration),
     });
   }
 

@@ -1,23 +1,32 @@
 from openai import OpenAI
 
 from app.config import settings
+from app.core.llm import describe_llm_error
 
 
 class AIServiceError(Exception):
     pass
 
 
+def _client(timeout_seconds: float | None) -> OpenAI:
+    return OpenAI(
+        api_key=settings.openai_api_key,
+        timeout=timeout_seconds or settings.llm_timeout_seconds,
+        max_retries=settings.llm_max_retries,
+    )
+
+
 def generate_json(
     *,
     system_prompt: str,
     user_content: str,
-    timeout_seconds: float = 120.0,
+    timeout_seconds: float | None = None,
     max_completion_tokens: int | None = None,
 ) -> str:
     """Chama a API com response_format=json_object (resposta garantida como JSON)."""
     if not settings.openai_api_key:
         raise AIServiceError("OPENAI_API_KEY não configurada.")
-    client = OpenAI(api_key=settings.openai_api_key, timeout=timeout_seconds)
+    client = _client(timeout_seconds)
     try:
         kwargs: dict = {
             "model": settings.openai_model,
@@ -39,19 +48,19 @@ def generate_json(
     except AIServiceError:
         raise
     except Exception as e:
-        raise AIServiceError(str(e)) from e
+        raise AIServiceError(describe_llm_error(e, "OpenAI")) from e
 
 
 def generate_markdown(
     *,
     system_prompt: str,
     user_content: str,
-    timeout_seconds: float = 120.0,
+    timeout_seconds: float | None = None,
     max_completion_tokens: int | None = None,
 ) -> str:
     if not settings.openai_api_key:
         raise AIServiceError("OPENAI_API_KEY não configurada.")
-    client = OpenAI(api_key=settings.openai_api_key, timeout=timeout_seconds)
+    client = _client(timeout_seconds)
     try:
         kwargs: dict = {
             "model": settings.openai_model,
@@ -72,4 +81,4 @@ def generate_markdown(
     except AIServiceError:
         raise
     except Exception as e:
-        raise AIServiceError(str(e)) from e
+        raise AIServiceError(describe_llm_error(e, "OpenAI")) from e

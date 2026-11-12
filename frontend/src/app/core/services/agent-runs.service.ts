@@ -1,5 +1,5 @@
 import { Injectable } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { AgentInfo, AgentRun, RunEvent } from '../models/agent-run.model';
 import { AuthService } from './auth.service';
@@ -17,8 +17,11 @@ export class AgentRunsService {
     return this.http.get<AgentInfo[]>(`${API_BASE}/agents`);
   }
 
-  createRun(agent: string, input: Record<string, unknown>): Observable<AgentRun> {
-    return this.http.post<AgentRun>(`${API_BASE}/agents/${agent}/runs`, { input });
+  /** githubToken (opcional) vai só no header X-GitHub-Token, para repositórios privados. */
+  createRun(agent: string, input: Record<string, unknown>, githubToken?: string): Observable<AgentRun> {
+    const token = githubToken?.trim();
+    const headers = token ? new HttpHeaders({ 'X-GitHub-Token': token }) : undefined;
+    return this.http.post<AgentRun>(`${API_BASE}/agents/${agent}/runs`, { input }, { headers });
   }
 
   getRun(runId: number): Observable<AgentRun> {

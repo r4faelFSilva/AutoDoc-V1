@@ -1,6 +1,13 @@
 # AutoDoc 2.0 — modo Compose: Postgres + pgvector, Redis, API e worker.
 #
+# ATENÇÃO: este compose é para DESENVOLVIMENTO LOCAL. Não use como está em um
+# servidor exposto à internet (sem HTTPS, sem backups, sem hardening).
+#
+#   cp infra/.env.example infra/.env   # e preencha as senhas e o JWT_SECRET
 #   docker compose -f infra/docker-compose.yml up --build
+#
+# O Compose lê infra/.env automaticamente. Postgres e Redis só ficam
+# acessíveis em 127.0.0.1 na máquina host.
 #
 # Requer Docker Desktop. Sem ele, o backend roda em modo fallback
 # (SQLite + jobs in-process): basta deixar REDIS_URL/DATABASE_URL vazios.
@@ -12,25 +19,29 @@ services:
   db:
     image: pgvector/pgvector:pg16
     environment:
-      POSTGRES_USER: autodoc
-      POSTGRES_PASSWORD: autodoc
-      POSTGRES_DB: autodoc
+      POSTGRES_USER: ${POSTGRES_USER:-autodoc}
+      # Só vale na criação do volume: para trocar depois, recrie o volume pgdata.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD em infra/.env}
+      POSTGRES_DB: ${POSTGRES_DB:-autodoc}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U autodoc"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER}"]
       interval: 5s
       timeout: 3s
       retries: 10
 
   redis:
     image: redis:7-alpine
+    command: ["sh", "-c", "exec redis-server --requirepass \"$$REDIS_PASSWORD\""]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?defina REDIS_PASSWORD em infra/.env}
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" --no-auth-warning ping"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -38,13 +49,22 @@ services:
   api:
     build: ../backend
     environment: &backend-env
-      DATABASE_URL: postgresql+psycopg://autodoc:autodoc@db:5432/autodoc
-      REDIS_URL: redis://redis:6379/0
-      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      # Senhas entram em URLs: use apenas caracteres seguros para URL (ex.: token_urlsafe).
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-autodoc}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-autodoc}
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      APP_ENV: ${APP_ENV:-production}
+      JWT_SECRET: ${JWT_SECRET:?defina JWT_SECRET (32+ caracteres) em infra/.env}
+      JWT_EXPIRE_MINUTES: ${JWT_EXPIRE_MINUTES:-1440}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:4200}
+      ALLOW_REGISTRATION: ${ALLOW_REGISTRATION:-false}
+      SEED_DEMO_USER: ${SEED_DEMO_USER:-false}
+      DEMO_PASSWORD: ${DEMO_PASSWORD:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       LLM_PROVIDER: ${LLM_PROVIDER:-openai}
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      ALLOW_SERVER_GITHUB_TOKEN: ${ALLOW_SERVER_GITHUB_TOKEN:-false}
+      TESTGEN_EXECUTION: ${TESTGEN_EXECUTION:-none}
     ports:
       - "8000:8000"
     depends_on:

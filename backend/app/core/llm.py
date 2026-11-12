@@ -3,6 +3,10 @@
 Os serviços legados (ai_openai.py) continuam funcionando para os endpoints
 síncronos antigos; todo agente novo usa esta camada, que é assíncrona e
 plugável entre providers (OpenAI / Anthropic) via settings.llm_provider.
+
+Cada chamada tem timeout próprio (LLM_TIMEOUT_SECONDS) e no máximo
+LLM_MAX_RETRIES novas tentativas; erros do SDK viram LLMError com mensagem
+legível para o usuário (ver describe_llm_error).
 """
 
 from __future__ import annotations
@@ -15,6 +19,25 @@ from app.config import settings
 
 class LLMError(Exception):
     pass
+
+
+_KEY_VARS = {"OpenAI": "OPENAI_API_KEY", "Anthropic": "ANTHROPIC_API_KEY"}
+
+
+def describe_llm_error(error: BaseException, provider: str) -> str:
+    """Mensagem clara para erros dos SDKs da OpenAI/Anthropic (mesmos nomes de classe)."""
+    kind = type(error).__name__
+    if kind == "APITimeoutError" or isinstance(error, TimeoutError):
+        return f"A IA ({provider}) não respondeu em {settings.llm_timeout_seconds:g} s."
+    if kind == "AuthenticationError":
+        return f"A chave da {provider} ({_KEY_VARS.get(provider, 'API key')}) é inválida ou foi revogada."
+    if kind == "PermissionDeniedError":
+        return f"A chave da {provider} não tem permissão para usar o modelo configurado."
+    if kind == "RateLimitError":
+        return f"Limite de uso da {provider} atingido (taxa ou cota). Tente novamente em instantes."
+    if kind == "APIConnectionError":
+        return f"Não foi possível conectar à API da {provider}. Verifique a rede."
+    return f"Erro na API da {provider}: {error}"
 
 
 @dataclass
@@ -55,7 +78,11 @@ class OpenAIProvider:
 
         if not self._api_key:
             raise LLMError("OPENAI_API_KEY não configurada.")
-        client = AsyncOpenAI(api_key=self._api_key, timeout=settings.agent_timeout_seconds)
+        client = AsyncOpenAI(
+            api_key=self._api_key,
+            timeout=settings.llm_timeout_seconds,
+            max_retries=settings.llm_max_retries,
+        )
         kwargs: dict = {
             "model": self._model,
             "messages": [
@@ -71,7 +98,7 @@ class OpenAIProvider:
         try:
             completion = await client.chat.completions.create(**kwargs)
         except Exception as e:  # noqa: BLE001 — normaliza qualquer erro do SDK
-            raise LLMError(str(e)) from e
+            raise LLMError(describe_llm_error(e, "OpenAI")) from e
         text = (completion.choices[0].message.content or "").strip()
         if not text:
             raise LLMError("Resposta vazia da API de IA.")
@@ -102,7 +129,11 @@ class AnthropicProvider:
 
         if not self._api_key:
             raise LLMError("ANTHROPIC_API_KEY não configurada.")
-        client = AsyncAnthropic(api_key=self._api_key, timeout=settings.agent_timeout_seconds)
+        client = AsyncAnthropic(
+            api_key=self._api_key,
+            timeout=settings.llm_timeout_seconds,
+            max_retries=settings.llm_max_retries,
+        )
         system = system_prompt
         if json_mode:
             system += "\n\nResponda APENAS com um objeto JSON válido, sem markdown em volta."
@@ -115,7 +146,7 @@ class AnthropicProvider:
                 messages=[{"role": "user", "content": user_content}],
             )
         except Exception as e:  # noqa: BLE001
-            raise LLMError(str(e)) from e
+            raise LLMError(describe_llm_error(e, "Anthropic")) from e
         text = "".join(block.text for block in message.content if block.type == "text").strip()
         if not text:
             raise LLMError("Resposta vazia da API de IA.")

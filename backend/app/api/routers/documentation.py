@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.dependencies import CurrentUser, resolve_github_token
+from app.dependencies import CurrentUser, optional_github_token, resolve_github_token
 from app.schemas.documentation import (
     CommitGithubReadmeRequest,
     CommitGithubReadmeResponse,
@@ -44,9 +44,11 @@ def generate_github(
     body: GenerateGithubRequest,
     user: CurrentUser,
     db: Session = Depends(get_db),
+    x_github_token: str | None = Header(default=None, alias="X-GitHub-Token"),
 ) -> DocumentationRecordResponse:
+    token = optional_github_token(body.github_token, x_github_token)
     try:
-        return documentation_service.generate_from_github(db, user_id=user.id, body=body)
+        return documentation_service.generate_from_github(db, user_id=user.id, body=body, github_token=token)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 

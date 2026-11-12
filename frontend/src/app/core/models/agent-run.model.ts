@@ -12,6 +12,8 @@ export interface AgentRun {
   created_at: string;
   started_at: string | null;
   finished_at: string | null;
+  /** Limite de tempo total do run no servidor, em segundos. */
+  timeout_seconds?: number | null;
 }
 
 export interface RunEvent {

@@ -77,10 +77,15 @@ steps:
   - task: PowerShell@2
     displayName: Gerar documentacao via GitHub
     condition: eq(variables['NEEDS_UPDATE'], 'true')
+    env:
+      AUTODOC_GITHUB_TOKEN: $(AUTODOC_GITHUB_TOKEN)
     inputs:
       targetType: inline
       script: |
-        $headers = @{ Authorization = "Bearer $(AUTODOC_TOKEN)" }
+        $headers = @{
+          Authorization = "Bearer $(AUTODOC_TOKEN)"
+          "X-GitHub-Token" = $env:AUTODOC_GITHUB_TOKEN
+        }
         $payload = @{
           github_url  = "$(AUTODOC_GITHUB_URL)"
           template_id = "$(AUTODOC_TEMPLATE_ID)"

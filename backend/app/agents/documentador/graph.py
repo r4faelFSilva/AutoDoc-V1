@@ -78,6 +78,8 @@ class DocState(TypedDict, total=False):
     filename: str | None
     github_url: str | None
     branch: str | None
+    # token do GitHub do usuário (header da requisição); nunca persistido
+    github_token: str | None
     # comuns
     system_prompt: str
     user_block: str
@@ -153,6 +155,7 @@ async def prepare(state: DocState) -> DocState:
                 owner=owner,
                 repo=repo,
                 branch=url_branch or state.get("branch"),
+                github_token=state.get("github_token"),
             )
         except GitHubArchiveError as e:
             raise ValueError(str(e)) from e
@@ -211,6 +214,7 @@ async def ingest(state: DocState) -> DocState:
                 max_files=DEEP_MAX_FILES,
                 max_total_chars=DEEP_MAX_TOTAL_CHARS,
                 max_file_chars=DEEP_MAX_FILE_CHARS,
+                github_token=state.get("github_token"),
             )
         except GitHubArchiveError as e:
             raise ValueError(str(e)) from e

@@ -20,6 +20,12 @@ dist/
 .idea/
 .vscode/settings.json
 
+# Lockfile vazio gerado por engano na raiz (o real fica em frontend/)
+/package-lock.json
+
+# Configuração local de agentes de IA
+.claude/
+
 # Documentos-fonte do TCC (grandes/pessoais — versione manualmente se quiser)
 TCC_AutoDoc_Final.docx
 _tcc_extract.txt

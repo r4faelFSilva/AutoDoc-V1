@@ -11,6 +11,10 @@ class RegisterRequest(BaseModel):
     password: str
 
 
+class AuthConfigResponse(BaseModel):
+    allow_registration: bool
+
+
 class LoginResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"

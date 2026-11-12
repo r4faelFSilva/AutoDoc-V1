@@ -58,12 +58,7 @@
         </span>
       </button>
 
-      <p class="demo-hint">
-        <span class="material-symbols-outlined hint-icon">info</span>
-        Demo: demo&#64;autodoc.dev / demo
-      </p>
-
-      <p class="register-link">
+      <p class="register-link" *ngIf="allowRegistration()">
         Não tem uma conta?
         <a routerLink="/register">Cadastre-se</a>
       </p>

@@ -13,7 +13,7 @@ from collections.abc import AsyncIterator
 from datetime import datetime
 
 import app.agents  # noqa: F401 — garante o registro dos agentes
-from fastapi import APIRouter, HTTPException, UploadFile, status
+from fastapi import APIRouter, Header, HTTPException, UploadFile, status
 from fastapi.responses import StreamingResponse
 from pydantic import ValidationError
 
@@ -22,6 +22,7 @@ from app.core.events import get_event_bus
 from app.database import SessionLocal
 from app.dependencies import CurrentUser, DbSession
 from app.jobs.queue import enqueue_agent_run
+from app.jobs.tasks import run_timeout_seconds
 from app.models.agent_run import AgentRun, RunEvent
 from app.schemas.runs import (
     AgentInfoResponse,
@@ -34,6 +35,8 @@ router = APIRouter(tags=["agents"])
 
 TERMINAL_KINDS = frozenset({"completed", "failed"})
 TERMINAL_STATUSES = frozenset({"completed", "failed", "cancelled"})
+# Intervalo do keep-alive do SSE; a cada intervalo o banco é reconsultado.
+KEEPALIVE_SECONDS = 15.0
 
 
 def _to_run_response(run: AgentRun) -> AgentRunResponse:
@@ -49,6 +52,7 @@ def _to_run_response(run: AgentRun) -> AgentRunResponse:
         created_at=run.created_at,
         started_at=run.started_at,
         finished_at=run.finished_at,
+        timeout_seconds=run_timeout_seconds(run.agent, run.input_json),
     )
 
 
@@ -75,6 +79,7 @@ async def create_run(
     body: CreateRunRequest,
     user: CurrentUser,
     db: DbSession,
+    x_github_token: str | None = Header(default=None, alias="X-GitHub-Token"),
 ) -> AgentRunResponse:
     try:
         spec = contracts.get_agent(agent_name)
@@ -100,7 +105,8 @@ async def create_run(
     db.commit()
     db.refresh(run)
 
-    await enqueue_agent_run(run.id)
+    # O token do GitHub vai só para a execução, nunca para input_json.
+    await enqueue_agent_run(run.id, github_token=(x_github_token or "").strip() or None)
     return _to_run_response(run)
 
 
@@ -217,11 +223,10 @@ def _load_history(run_id: int) -> list[RunEventResponse]:
         db.close()
 
 
-def _run_status(run_id: int) -> str | None:
+def _load_run(run_id: int) -> AgentRun | None:
     db = SessionLocal()
     try:
-        run = db.query(AgentRun).filter(AgentRun.id == run_id).first()
-        return run.status if run else None
+        return db.query(AgentRun).filter(AgentRun.id == run_id).first()
     finally:
         db.close()
 
@@ -230,38 +235,80 @@ def _sse(payload: dict) -> str:
     return f"data: {json.dumps(payload, ensure_ascii=False, default=str)}\n\n"
 
 
+def _terminal_from_db(run: AgentRun, seq: int) -> dict:
+    """Evento final montado a partir do run, quando ele terminou sem evento final gravado."""
+    if run.status == "completed":
+        return {
+            "seq": seq,
+            "kind": "completed",
+            "message": "Run concluído.",
+            "data": json.loads(run.output_json) if run.output_json else {},
+        }
+    return {
+        "seq": seq,
+        "kind": "failed",
+        "message": f"Run falhou: {run.error}" if run.error else "Run falhou.",
+        "data": {},
+    }
+
+
 async def _event_stream(run_id: int) -> AsyncIterator[str]:
-    # 1) replay do histórico persistido
-    history = _load_history(run_id)
+    """Histórico + eventos ao vivo; só encerra depois de enviar completed/failed.
+
+    A assinatura é feita ANTES de ler o histórico (nada se perde entre os dois)
+    e o timeout de keep-alive cancela apenas o get(), não a assinatura.
+    """
+    subscription = await get_event_bus().subscribe(run_id)
     last_seq = 0
-    for ev in history:
-        last_seq = ev.seq
-        yield _sse(ev.model_dump())
-        if ev.kind in TERMINAL_KINDS:
+
+    def replay_new() -> tuple[list[str], bool]:
+        """Eventos persistidos ainda não enviados; True se incluir o evento final."""
+        nonlocal last_seq
+        chunks: list[str] = []
+        for ev in _load_history(run_id):
+            if ev.seq <= last_seq:
+                continue
+            last_seq = ev.seq
+            chunks.append(_sse(ev.model_dump()))
+            if ev.kind in TERMINAL_KINDS:
+                return chunks, True
+        return chunks, False
+
+    def finished_without_event() -> str | None:
+        run = _load_run(run_id)
+        if run is not None and run.status in TERMINAL_STATUSES:
+            return _sse(_terminal_from_db(run, last_seq + 1))
+        return None
+
+    try:
+        # 1) histórico persistido
+        chunks, done = replay_new()
+        for chunk in chunks:
+            yield chunk
+        if done:
+            return
+        final = finished_without_event()
+        if final:
+            yield final
             return
 
-    # run já terminou sem evento terminal registrado? encerra
-    if _run_status(run_id) in TERMINAL_STATUSES:
-        return
-
-    # 2) segue ao vivo pelo bus, com timeout de segurança para reconsultar o banco
-    bus = get_event_bus()
-    subscription = bus.subscribe(run_id)
-    try:
+        # 2) ao vivo pelo bus; a cada keep-alive o banco é reconsultado
         while True:
             try:
-                event = await asyncio.wait_for(subscription.__anext__(), timeout=15.0)
+                event = await asyncio.wait_for(subscription.get(), timeout=KEEPALIVE_SECONDS)
             except asyncio.TimeoutError:
-                # keep-alive + verificação de término perdido (ex.: worker caiu)
                 yield ": keep-alive\n\n"
-                if _run_status(run_id) in TERMINAL_STATUSES:
-                    for ev in _load_history(run_id):
-                        if ev.seq > last_seq:
-                            yield _sse(ev.model_dump())
+                # eventos que não chegaram pelo bus (ex.: worker em outro processo)
+                chunks, done = replay_new()
+                for chunk in chunks:
+                    yield chunk
+                if done:
+                    return
+                final = finished_without_event()
+                if final:
+                    yield final
                     return
                 continue
-            except StopAsyncIteration:
-                return
             if event.get("seq", 0) <= last_seq:
                 continue
             last_seq = event.get("seq", last_seq)
@@ -269,9 +316,7 @@ async def _event_stream(run_id: int) -> AsyncIterator[str]:
             if event.get("kind") in TERMINAL_KINDS:
                 return
     finally:
-        aclose = getattr(subscription, "aclose", None)
-        if aclose is not None:
-            await aclose()
+        await subscription.close()
 
 
 @router.get("/runs/{run_id}/events")

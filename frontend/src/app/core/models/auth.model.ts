@@ -8,6 +8,10 @@ export interface RegisterRequest {
   password: string;
 }
 
+export interface AuthConfig {
+  allow_registration: boolean;
+}
+
 export interface LoginResponse {
   access_token: string;
   token_type: string;

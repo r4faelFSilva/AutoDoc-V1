@@ -103,7 +103,13 @@ def generate_from_code(
     return _to_doc_response(rec)
 
 
-def generate_from_github(db: Session, *, user_id: int, body: GenerateGithubRequest) -> DocumentationRecordResponse:
+def generate_from_github(
+    db: Session,
+    *,
+    user_id: int,
+    body: GenerateGithubRequest,
+    github_token: str | None = None,
+) -> DocumentationRecordResponse:
     tid = _parse_template_id(body.template_id)
     template = template_service.get_template(db, tid)
     if not template:
@@ -111,7 +117,12 @@ def generate_from_github(db: Session, *, user_id: int, body: GenerateGithubReque
 
     try:
         owner, repo, branch = parse_github_url(body.github_url)
-        ref, bundle_text, _warnings = fetch_repo_text_bundle(owner=owner, repo=repo, branch=branch or body.branch)
+        ref, bundle_text, _warnings = fetch_repo_text_bundle(
+            owner=owner,
+            repo=repo,
+            branch=branch or body.branch,
+            github_token=github_token,
+        )
     except GitHubArchiveError as e:
         raise ValueError(str(e)) from e
 
@@ -203,7 +214,7 @@ def sync_github_documentation(
         output_type=body.output_type,
         branch=body.branch,
     )
-    doc = generate_from_github(db, user_id=user_id, body=gen_body)
+    doc = generate_from_github(db, user_id=user_id, body=gen_body, github_token=token)
     if doc.status != "completed":
         return GithubDocSyncResponse(
             action="failed",

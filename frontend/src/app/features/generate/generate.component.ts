@@ -1,9 +1,10 @@
-import { Component, OnInit, signal, ViewChild, ElementRef } from '@angular/core';
+import { Component, DestroyRef, OnInit, inject, signal, ViewChild, ElementRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormBuilder, FormGroup, Validators, ReactiveFormsModule } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MarkdownModule } from 'ngx-markdown';
+import { Subscription } from 'rxjs';
 import { DocumentationService } from '../../core/services/documentation.service';
 import { AgentRunsService } from '../../core/services/agent-runs.service';
 import { PdfExportService } from '../../core/services/pdf-export.service';
@@ -12,6 +13,11 @@ import { DocumentationRecord } from '../../core/models/documentation.model';
 import { AgentRun, DocumentadorInput } from '../../core/models/agent-run.model';
 import { Template } from '../../core/models/template.model';
 import { SkeletonComponent } from '../../shared/components/skeleton/skeleton.component';
+
+/** Folga da tela sobre o limite do servidor antes de desistir de esperar. */
+const DEADLINE_MARGIN_SECONDS = 60;
+/** Usado se a resposta do servidor não informar o limite do run. */
+const DEFAULT_RUN_TIMEOUT_SECONDS = 300;
 
 @Component({
   selector: 'app-generate',
@@ -36,6 +42,13 @@ export class GenerateComponent implements OnInit {
   commitTargetPath = signal('README.md');
   commitMessage = signal('docs: atualiza documentação via AutoDoc');
   publishing = signal(false);
+  /** Erro da última geração, exibido em destaque até a próxima tentativa. */
+  errorMessage = signal<string | null>(null);
+
+  private readonly destroyRef = inject(DestroyRef);
+  private watchSub?: Subscription;
+  private pollTimer?: ReturnType<typeof setTimeout>;
+  private deadlineTimer?: ReturnType<typeof setTimeout>;
 
   outputTypes = [
     { value: 'technical', label: 'Técnica (para devs)', icon: 'code' },
@@ -61,6 +74,8 @@ export class GenerateComponent implements OnInit {
       // Análise profunda é opt-in — múltiplas chamadas de IA por documento
       deep: [false],
     });
+    // Saiu da tela: para de acompanhar o run (stream, polling e prazo).
+    this.destroyRef.onDestroy(() => this.stopWatching());
   }
 
   ngOnInit(): void {
@@ -116,8 +131,10 @@ export class GenerateComponent implements OnInit {
       return;
     }
 
+    this.stopWatching();
     this.loading.set(true);
     this.result.set(null);
+    this.errorMessage.set(null);
     this.progressMessage.set('Enviando para o agente documentador…');
 
     const mode = this.inputMode();
@@ -141,55 +158,81 @@ export class GenerateComponent implements OnInit {
             filename: this.uploadedFilename() || 'código-colado.txt',
           };
 
-    this.runsService.createRun('documentador', input as unknown as Record<string, unknown>).subscribe({
-      next: run => this.watchRun(run.id),
+    const repoToken = mode === 'github' ? this.githubToken() : undefined;
+    this.runsService.createRun('documentador', input as unknown as Record<string, unknown>, repoToken).subscribe({
+      next: run => {
+        this.startDeadline(run);
+        this.watchRun(run.id);
+      },
       error: (err: unknown) => this.failGeneration(err),
     });
   }
 
+  /** Prazo total na tela: limite do run no servidor + folga. */
+  private startDeadline(run: AgentRun): void {
+    const limit = run.timeout_seconds ?? DEFAULT_RUN_TIMEOUT_SECONDS;
+    this.deadlineTimer = setTimeout(() => {
+      this.stopWatching();
+      this.showError(
+        `A geração não terminou em ${this.describeDuration(limit)}. ` +
+          'Ela pode ter falhado no servidor — confira o Histórico.',
+      );
+    }, (limit + DEADLINE_MARGIN_SECONDS) * 1000);
+  }
+
+  private stopWatching(): void {
+    this.watchSub?.unsubscribe();
+    this.watchSub = undefined;
+    clearTimeout(this.pollTimer);
+    clearTimeout(this.deadlineTimer);
+  }
+
   private watchRun(runId: number): void {
-    this.runsService.streamEvents(runId).subscribe({
+    let finished = false;
+    this.watchSub = this.runsService.streamEvents(runId).subscribe({
       next: event => {
         this.progressMessage.set(event.message);
+        if (event.kind === 'completed' || event.kind === 'failed') {
+          finished = true;
+          this.stopWatching();
+        }
         if (event.kind === 'completed') {
           const docId = event.data?.['doc_id'];
           this.loadGeneratedDoc(String(docId));
         } else if (event.kind === 'failed') {
-          this.loading.set(false);
-          this.snackBar.open(event.message || 'Erro ao gerar documentação.', 'Fechar', {
-            duration: 5000,
-            panelClass: ['snack-error'],
-          });
+          this.showError(event.message.replace(/^Run falhou:\s*/, '') || 'Erro ao gerar documentação.');
         }
       },
       // Stream caiu (proxy, rede)? Degrada para polling — o run segue no backend.
       error: () => this.pollRun(runId),
+      // Stream encerrado sem completed/failed: não dá para saber o desfecho por ele,
+      // então consulta o run por polling em vez de deixar a tela esperando.
+      complete: () => {
+        if (!finished) {
+          this.pollRun(runId);
+        }
+      },
     });
   }
 
-  private pollRun(runId: number, attempt = 0): void {
-    const maxAttempts = 150; // ~5 min a cada 2s
-    this.runsService.getRun(runId).subscribe({
+  /** Consulta o run a cada 2 s até terminar; o prazo total (startDeadline) encerra a espera. */
+  private pollRun(runId: number): void {
+    this.watchSub = this.runsService.getRun(runId).subscribe({
       next: (run: AgentRun) => {
         if (run.status === 'completed') {
+          this.stopWatching();
           this.loadGeneratedDoc(String(run.output?.['doc_id']));
         } else if (run.status === 'failed' || run.status === 'cancelled') {
-          this.loading.set(false);
-          this.snackBar.open(run.error || 'Erro ao gerar documentação.', 'Fechar', {
-            duration: 5000,
-            panelClass: ['snack-error'],
-          });
-        } else if (attempt < maxAttempts) {
-          setTimeout(() => this.pollRun(runId, attempt + 1), 2000);
+          this.stopWatching();
+          this.showError(run.error || 'Erro ao gerar documentação.');
         } else {
-          this.loading.set(false);
-          this.snackBar.open('Tempo esgotado aguardando a geração.', 'Fechar', {
-            duration: 5000,
-            panelClass: ['snack-error'],
-          });
+          this.pollTimer = setTimeout(() => this.pollRun(runId), 2000);
         }
       },
-      error: (err: unknown) => this.failGeneration(err),
+      error: (err: unknown) => {
+        this.stopWatching();
+        this.failGeneration(err);
+      },
     });
   }
 
@@ -216,8 +259,24 @@ export class GenerateComponent implements OnInit {
     });
   }
 
-  private failGeneration(err: unknown): void {
+  private showError(message: string): void {
     this.loading.set(false);
+    this.errorMessage.set(message);
+    this.snackBar.open(message, 'Fechar', {
+      duration: 5000,
+      panelClass: ['snack-error'],
+    });
+  }
+
+  private describeDuration(seconds: number): string {
+    if (seconds >= 60 && seconds % 60 === 0) {
+      const minutes = seconds / 60;
+      return minutes === 1 ? '1 minuto' : `${minutes} minutos`;
+    }
+    return `${seconds} s`;
+  }
+
+  private failGeneration(err: unknown): void {
     let msg = 'Erro ao gerar documentação.';
     if (err instanceof HttpErrorResponse) {
       const d = err.error?.detail;
@@ -227,10 +286,7 @@ export class GenerateComponent implements OnInit {
         msg = d.map((x: { msg?: string }) => x.msg).filter(Boolean).join(' ') || msg;
       }
     }
-    this.snackBar.open(msg, 'Fechar', {
-      duration: 5000,
-      panelClass: ['snack-error'],
-    });
+    this.showError(msg);
   }
 
   exportPdf(): void {

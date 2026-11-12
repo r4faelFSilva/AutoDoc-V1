@@ -15,6 +15,8 @@ class GenerateGithubRequest(BaseModel):
     template_id: str
     output_type: str = Field(pattern="^(technical|functional)$")
     branch: str | None = None
+    # Token do próprio usuário, necessário para repositórios privados.
+    github_token: SecretStr | None = None
 
 
 class DocumentationRecordResponse(BaseModel):

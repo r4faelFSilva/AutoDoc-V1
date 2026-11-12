@@ -3,7 +3,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Router } from '@angular/router';
 import { Observable, throwError } from 'rxjs';
 import { catchError, tap } from 'rxjs/operators';
-import { LoginRequest, LoginResponse, RegisterRequest } from '../models/auth.model';
+import { AuthConfig, LoginRequest, LoginResponse, RegisterRequest } from '../models/auth.model';
 
 const TOKEN_KEY = 'autodoc_token';
 const API_BASE = '/api';
@@ -30,6 +30,11 @@ export class AuthService {
         return throwError(() => new Error(msg));
       }),
     );
+  }
+
+  /** Configuração pública do servidor (ex.: se o cadastro está aberto). */
+  getConfig(): Observable<AuthConfig> {
+    return this.http.get<AuthConfig>(`${API_BASE}/auth/config`);
   }
 
   register(data: RegisterRequest): Observable<LoginResponse> {

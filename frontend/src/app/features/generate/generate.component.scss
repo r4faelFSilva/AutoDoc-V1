@@ -563,3 +563,16 @@
   &:hover:not(:disabled) { background: rgba(56, 139, 253, 0.28); color: #fff; }
   &:disabled { opacity: 0.5; cursor: not-allowed; }
 }
+
+.run-error {
+  display: flex;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid rgba(248, 113, 113, 0.4);
+  border-radius: 10px;
+  background: rgba(248, 113, 113, 0.08);
+  color: #fca5a5;
+  .material-symbols-outlined { color: #f87171; }
+  strong { color: #f87171; }
+  p { margin: 4px 0 0; line-height: 1.5; }
+}

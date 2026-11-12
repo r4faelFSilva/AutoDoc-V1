@@ -71,6 +71,15 @@
               placeholder="main — deixe vazio para usar o branch padrão do repositório"
               spellcheck="false"
             />
+            <label class="field-label github-branch-label">Token do GitHub (opcional, para repositórios privados)</label>
+            <input
+              type="password"
+              class="code-textarea github-branch-input"
+              [value]="githubToken()"
+              (input)="onGithubTokenInput($event)"
+              autocomplete="new-password"
+              placeholder="ghp_… — usado só nesta requisição, não é salvo"
+            />
           </ng-container>
         </div>
 
@@ -128,7 +137,7 @@
       </form>
     </div>
 
-    <div class="result-panel" *ngIf="result() || loading()">
+    <div class="result-panel" *ngIf="result() || loading() || errorMessage()">
       <div class="result-header">
         <h2 class="result-title">
           <span class="material-symbols-outlined">description</span>
@@ -158,6 +167,14 @@
             <span class="material-symbols-outlined">picture_as_pdf</span>
             PDF
           </button>
+        </div>
+      </div>
+
+      <div class="run-error" *ngIf="errorMessage() && !loading()" role="alert">
+        <span class="material-symbols-outlined">error</span>
+        <div>
+          <strong>A geração não foi concluída</strong>
+          <p>{{ errorMessage() }}</p>
         </div>
       </div>
 

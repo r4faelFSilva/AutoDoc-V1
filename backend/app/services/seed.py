@@ -1,21 +1,39 @@
+import logging
+import secrets
 from datetime import datetime
 
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.models.template import Template
 from app.models.user import User
 from app.services.auth_service import hash_password
 
+logger = logging.getLogger(__name__)
+
+DEMO_EMAIL = "demo@autodoc.dev"
+
+
+def _seed_demo_user(db: Session) -> None:
+    if db.query(User).filter(User.email == DEMO_EMAIL).first():
+        return
+    password = settings.demo_password or secrets.token_urlsafe(12)
+    db.add(User(email=DEMO_EMAIL, hashed_password=hash_password(password), created_at=datetime.utcnow()))
+    db.commit()
+    if settings.demo_password:
+        logger.warning("Usuário demo criado: %s (senha definida em DEMO_PASSWORD).", DEMO_EMAIL)
+    else:
+        # Exibida só nesta inicialização: nas próximas o usuário já existe.
+        logger.warning(
+            "Usuário demo criado: %s / senha gerada: %s — anote, ela não será exibida novamente.",
+            DEMO_EMAIL,
+            password,
+        )
+
 
 def run_seed(db: Session) -> None:
-    if db.query(User).count() == 0:
-        demo = User(
-            email="demo@autodoc.dev",
-            hashed_password=hash_password("demo"),
-            created_at=datetime.utcnow(),
-        )
-        db.add(demo)
-        db.commit()
+    if settings.seed_demo_user:
+        _seed_demo_user(db)
 
     if db.query(Template).count() == 0:
         templates = [

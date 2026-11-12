@@ -29,6 +29,8 @@ class AgentRunResponse(BaseModel):
     created_at: datetime
     started_at: datetime | None = None
     finished_at: datetime | None = None
+    # Limite de tempo total do run no servidor, em segundos
+    timeout_seconds: float | None = None
 
 
 class RunEventResponse(BaseModel):

@@ -78,6 +78,8 @@ class TgState(TypedDict, total=False):
     filename: str | None
     github_url: str | None
     branch: str | None
+    # token do GitHub do usuário (header da requisição); nunca persistido
+    github_token: str | None
     target_path: str | None
     # intermediários
     language: str
@@ -148,6 +150,7 @@ async def analyze(state: TgState) -> TgState:
                 branch=url_branch or state.get("branch"),
                 max_files=400,
                 max_total_chars=1_200_000,
+                github_token=state.get("github_token"),
             )
         except GitHubArchiveError as e:
             raise ValueError(str(e)) from e

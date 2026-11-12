@@ -65,6 +65,8 @@ class ArchState(TypedDict, total=False):
     spec: str | None
     github_url: str | None
     branch: str | None
+    # token do GitHub do usuário (header da requisição); nunca persistido
+    github_token: str | None
     expected_rps: float
     base_architecture: dict | None
     # intermediários
@@ -186,6 +188,7 @@ async def intake(state: ArchState) -> ArchState:
                 branch=url_branch or state.get("branch"),
                 max_files=200,
                 max_total_chars=400_000,
+                github_token=state.get("github_token"),
             )
         except GitHubArchiveError as e:
             raise ValueError(str(e)) from e
