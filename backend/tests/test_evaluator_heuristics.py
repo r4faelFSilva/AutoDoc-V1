@@ -67,7 +67,7 @@ def test_ai_e_chamada_no_caminho_de_manutencao(monkeypatch):
     def fake_generate_json(**kwargs):
         return '{"needs_update": true, "reason": "API mudou", "confidence": "high"}'
 
-    monkeypatch.setattr(ev.ai_openai, "generate_json", fake_generate_json)
+    monkeypatch.setattr(ev.ai_text, "generate_json", fake_generate_json)
     ctx = _ctx(changed_files=[ChangedFile(filename="app/main.py", status="modified", patch_summary="+rota nova")])
     result = evaluate_documentation_update(ctx)
     assert result["needs_update"] is True
