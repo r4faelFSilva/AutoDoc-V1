@@ -20,7 +20,7 @@ from app.schemas.documentation import (
     GithubDocSyncResponse,
     SearchResultResponse,
 )
-from app.services import ai_openai, template_service
+from app.services import ai_text, template_service
 from app.services.documentation_evaluator import DocumentationEvaluatorError, evaluate_documentation_update
 from app.services.github_archive import GitHubArchiveError, fetch_repo_text_bundle, parse_github_url
 from app.services.github_changes import fetch_commit_analysis_context
@@ -79,9 +79,9 @@ def generate_from_code(
     )
     system = _system_prompt(template=template, output_type=body.output_type)
     try:
-        markdown = ai_openai.generate_markdown(system_prompt=system, user_content=user_block)
+        markdown = ai_text.generate_markdown(system_prompt=system, user_content=user_block)
         status = "completed"
-    except ai_openai.AIServiceError as e:
+    except ai_text.AIServiceError as e:
         markdown = f"# Erro na geração\n\n{str(e)}"
         status = "failed"
 
@@ -139,9 +139,9 @@ def generate_from_github(
         + bundle_text
     )
     try:
-        markdown = ai_openai.generate_markdown(system_prompt=system, user_content=user_block)
+        markdown = ai_text.generate_markdown(system_prompt=system, user_content=user_block)
         status = "completed"
-    except ai_openai.AIServiceError as e:
+    except ai_text.AIServiceError as e:
         markdown = f"# Erro na geração\n\n{str(e)}"
         status = "failed"
 
