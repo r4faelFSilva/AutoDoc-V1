@@ -34,7 +34,7 @@ O AutoDoc vem **seguro por padrão**. Antes de expor uma instância fora da sua 
 
 ## Cuidados adicionais
 
-- **Código enviado à IA:** o conteúdo documentado é enviado ao provedor de IA configurado (OpenAI ou Anthropic). Não use o AutoDoc com código que não pode sair da sua infraestrutura.
+- **Código enviado à IA:** o conteúdo documentado é enviado ao provedor de IA configurado (OpenAI, Anthropic ou o endereço em `OPENAI_COMPATIBLE_BASE_URL`). Não use o AutoDoc com código que não pode sair da sua infraestrutura, a menos que o provedor seja local (por exemplo, Ollama ou LM Studio na mesma máquina ou rede).
 - **Servidor MCP em modo SSE:** não tem autenticação própria e escuta em `127.0.0.1` por padrão. Não exponha a porta em rede pública.
 - **Docker Compose (`infra/`):** é destinado a desenvolvimento. Para produção, use HTTPS, senhas fortes e não publique as portas do Postgres e do Redis.
 - **Segredos:** nunca commite o arquivo `.env`. Use os arquivos `.env.example` como modelo.

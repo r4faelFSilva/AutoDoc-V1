@@ -26,7 +26,7 @@ O AutoDoc lê o código, monta o contexto relevante e gera documentação em Mar
 | Camada | Tecnologias |
 |---|---|
 | Backend | Python 3.11+, FastAPI, SQLAlchemy, Alembic, LangGraph |
-| IA | OpenAI ou Anthropic |
+| IA | OpenAI, Anthropic ou qualquer API compatível com a OpenAI (Groq, Gemini, OpenRouter, Ollama...) |
 | Banco | SQLite (padrão) ou PostgreSQL |
 | Fila (opcional) | Redis + arq |
 | Frontend | Angular 21 (standalone, signals), Angular Material |
@@ -38,7 +38,7 @@ O AutoDoc lê o código, monta o contexto relevante e gera documentação em Mar
 
 - Python 3.11 ou superior
 - Node.js 20.19 ou superior
-- Uma chave de API da OpenAI ou da Anthropic
+- Uma chave de API da OpenAI ou da Anthropic, ou um provedor compatível com a OpenAI (Groq, Gemini, OpenRouter, ou o Ollama local, que dispensa chave)
 
 ### Backend
 
@@ -105,18 +105,43 @@ As variáveis estão documentadas em [`backend/.env.example`](backend/.env.examp
 
 | Variável | Para que serve |
 |---|---|
-| `LLM_PROVIDER`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` | Provedor e chave da IA |
+| `LLM_PROVIDER`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` | Provedor (`openai`, `anthropic` ou `openai_compatible`) e chave da IA. Vale para toda a aplicação |
+| `OPENAI_COMPATIBLE_BASE_URL`, `OPENAI_COMPATIBLE_API_KEY`, `OPENAI_COMPATIBLE_MODEL` | Provedor compatível com a OpenAI (veja abaixo) |
 | `JWT_SECRET`, `APP_ENV` | Autenticação; em produção, a API recusa segredos fracos |
 | `SEED_DEMO_USER`, `ALLOW_REGISTRATION` | Usuário de demonstração e cadastro aberto (ambos desligados por padrão) |
 | `ALLOW_SERVER_GITHUB_TOKEN` | Se o token do servidor pode ser usado em nome dos usuários (desligado por padrão) |
 | `TESTGEN_EXECUTION` | Se o gerador de testes executa o código gerado: `none`, `docker` ou `local` |
 | `AGENT_RUN_TIMEOUT_SECONDS`, `LLM_TIMEOUT_SECONDS` | Limites de tempo das gerações |
 
+### Provedores compatíveis com a OpenAI
+
+Com `LLM_PROVIDER=openai_compatible`, o AutoDoc usa qualquer API que siga o formato da Chat Completions da OpenAI:
+
+| Provedor | `OPENAI_COMPATIBLE_BASE_URL` | Chave |
+|---|---|---|
+| Groq | `https://api.groq.com/openai/v1` | obrigatória |
+| Google Gemini | `https://generativelanguage.googleapis.com/v1beta/openai/` | obrigatória |
+| OpenRouter | `https://openrouter.ai/api/v1` | obrigatória |
+| Ollama (local) | `http://localhost:11434/v1` | dispensada |
+| LM Studio (local) | `http://localhost:1234/v1` | dispensada |
+
+Exemplo com o Ollama local (depois de `ollama pull llama3.1`):
+
+```bash
+LLM_PROVIDER=openai_compatible
+OPENAI_COMPATIBLE_BASE_URL=http://localhost:11434/v1
+OPENAI_COMPATIBLE_MODEL=llama3.1
+```
+
+Nos provedores em nuvem, preencha também `OPENAI_COMPATIBLE_API_KEY` e use em `OPENAI_COMPATIBLE_MODEL` um dos modelos listados pelo provedor.
+
+Por padrão, o formato JSON (avaliação de commit e template a partir de exemplo) é pedido no prompt e a resposta é lida de forma tolerante, o que funciona em qualquer provedor. Se o seu provedor aceitar `response_format={"type": "json_object"}`, ative `OPENAI_COMPATIBLE_JSON_MODE=true`.
+
 Antes de expor uma instância, leia o [SECURITY.md](SECURITY.md).
 
 ## Decisões de projeto
 
-- **Modelos locais (Ollama):** testamos o Ollama como provedor para eliminar o custo de tokens e manter o código na máquina do usuário. Em hardware sem GPU, a geração de um arquivo médio passou de 10 minutos, então o suporte foi removido por ora. Pode voltar quando houver streaming e pré-processamento que reduza o tamanho da entrada.
+- **Modelos locais (Ollama):** testamos o Ollama como provedor para eliminar o custo de tokens e manter o código na máquina do usuário. Em hardware sem GPU, a geração de um arquivo médio passou de 10 minutos, então ele não é recomendado como padrão. Ele pode ser usado pelo provedor `openai_compatible` (veja acima), de preferência com GPU e repositórios pequenos.
 - **Custo:** documentar um repositório inteiro no modo rápido com `gpt-4o-mini` consome cerca de 35 mil tokens, o que custa frações de centavo de dólar.
 
 ## Roadmap
@@ -124,7 +149,6 @@ Antes de expor uma instância, leia o [SECURITY.md](SECURITY.md).
 - Extensão para o VS Code
 - Aplicativo desktop (Tauri)
 - Núcleo compartilhado em TypeScript
-- Suporte a provedores compatíveis com a API da OpenAI (Groq, Gemini, OpenRouter)
 
 ## Autores
 

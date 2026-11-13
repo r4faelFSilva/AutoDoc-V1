@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import re
 
-from app.services import ai_openai
+from app.services import ai_text
 
 
 class TemplateSkeletonError(Exception):
@@ -45,6 +45,13 @@ def _parse_json_object(raw: str) -> dict:
                 "A IA retornou JSON incompleto ou inválido. "
                 "Tente um exemplo menor ou reduza seções antes de gerar o modelo."
             ) from e
+
+    # Último recurso: providers sem modo JSON nativo às vezes escrevem uma frase
+    # antes/depois do objeto, sem cercas de código.
+    try:
+        return ai_text.parse_json_object(raw)
+    except ValueError:
+        pass
 
     raise TemplateSkeletonError(
         "A IA não retornou um objeto JSON válido. "
@@ -150,7 +157,7 @@ Regras para o campo content (Markdown dentro do JSON):
 6) Início do content: parágrafo orientando que a IA receberá código-fonte e deve preencher cada ''...'' com dados do código analisado.
 7) Revise o content antes de responder: se ainda existir nome próprio do exemplo, troque por placeholder.
 
-Responda SOMENTE JSON válido conforme response_format."""
+Responda SOMENTE com um objeto JSON válido, com as chaves descritas acima."""
 
     user = (
         f"Tipo do template: {doc_type} "
@@ -159,13 +166,13 @@ Responda SOMENTE JSON válido conforme response_format."""
     )
 
     try:
-        raw = ai_openai.generate_json(
+        raw = ai_text.generate_json(
             system_prompt=system,
             user_content=user,
             timeout_seconds=180.0,
             max_completion_tokens=16384,
         )
-    except ai_openai.AIServiceError as e:
+    except ai_text.AIServiceError as e:
         raise TemplateSkeletonError(str(e)) from e
 
     data = _parse_json_object(raw)
