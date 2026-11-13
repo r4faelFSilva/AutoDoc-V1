@@ -1,6 +1,7 @@
 from pathlib import Path
 from typing import Literal
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _BACKEND_ROOT = Path(__file__).resolve().parent.parent
@@ -42,10 +43,31 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     openai_model: str = "gpt-4o-mini"
 
-    # Provider de IA usado pelos agentes (core/llm.py): "openai" ou "anthropic"
-    llm_provider: str = "openai"
+    # Provider de IA usado em TODA a aplicação (core/llm.py): geração clássica,
+    # avaliação de commit, template a partir de exemplo e agentes.
+    #   "openai" | "anthropic" | "openai_compatible"
+    llm_provider: Literal["openai", "anthropic", "openai_compatible"] = "openai"
     anthropic_api_key: str = ""
     anthropic_model: str = "claude-sonnet-5"
+
+    # Qualquer API compatível com a Chat Completions da OpenAI (Groq, Gemini,
+    # OpenRouter, Ollama, LM Studio, vLLM...). Usado com LLM_PROVIDER=openai_compatible.
+    openai_compatible_base_url: str = ""
+    # Opcional: servidores locais (Ollama, LM Studio) não exigem chave.
+    openai_compatible_api_key: str = ""
+    openai_compatible_model: str = ""
+    # true = envia response_format={"type": "json_object"}. Nem todo provedor/modelo
+    # aceita; com false, o formato JSON é pedido no prompt e a resposta é extraída
+    # de forma tolerante (funciona em qualquer provedor).
+    openai_compatible_json_mode: bool = False
+
+    @field_validator("llm_provider", mode="before")
+    @classmethod
+    def _normalize_llm_provider(cls, v: object) -> object:
+        # Aceita "OpenAI", " anthropic ", "openai-compatible" etc.
+        if isinstance(v, str):
+            return v.strip().lower().replace("-", "_") or "openai"
+        return v
 
     # Vazio = modo fallback: jobs rodam in-process e eventos ficam em memória.
     # Preenchido (ex.: redis://localhost:6379/0) = fila arq + pub/sub via Redis.
