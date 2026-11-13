@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import json
-
-from app.services import ai_openai
+from app.services import ai_text
 from app.services.github_changes import CommitAnalysisContext
 
 
@@ -136,11 +134,11 @@ def _evaluate_with_ai(ctx: CommitAnalysisContext) -> dict[str, str | bool | int]
     )
 
     try:
-        raw = ai_openai.generate_json(system_prompt=system_prompt, user_content=user_content)
-        data = json.loads(raw)
-    except ai_openai.AIServiceError as e:
+        raw = ai_text.generate_json(system_prompt=system_prompt, user_content=user_content)
+        data = ai_text.parse_json_object(raw)
+    except ai_text.AIServiceError as e:
         raise DocumentationEvaluatorError(str(e)) from e
-    except json.JSONDecodeError as e:
+    except ValueError as e:
         raise DocumentationEvaluatorError("Resposta da IA em formato inválido.") from e
 
     needs_update = bool(data.get("needs_update", True))
